@@ -110,6 +110,26 @@ window.__ModuleLoader__.load({
         display: 'flex', gap: '10px', alignItems: 'flex-start', border: '1px solid var(--dsw-alias-border-l1)',
         background: 'var(--dsw-alias-bg-layer-1)', borderRadius: '10px', padding: '10px',
       },
+      /** item 的可点击变体，用于卡片本身可展开/折叠时。 */
+      itemClickable: {
+        display: 'flex', gap: '10px', alignItems: 'flex-start', border: '1px solid var(--dsw-alias-border-l1)',
+        background: 'var(--dsw-alias-bg-layer-1)', borderRadius: '10px', padding: '10px',
+        cursor: 'pointer',
+      },
+      /** 详情块的 sticky 标题栏。负 margin 抵消 card 的 padding，让背景覆盖卡片顶部。 */
+      stickyBar: {
+        position: 'sticky',
+        top: 0,
+        zIndex: 5,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        background: 'var(--dsw-alias-bg-layer-1)',
+        margin: '-12px -12px 0',
+        padding: '12px 12px 6px',
+        borderBottom: '1px solid var(--dsw-alias-border-l1)',
+        cursor: 'pointer',
+      },
       thumb: { width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flex: '0 0 auto', background: 'var(--dsw-alias-bg-layer-2)' },
       grow: { flex: '1 1 240px', minWidth: '0' },
       name: { fontWeight: 600, fontSize: '13px' },
@@ -128,6 +148,7 @@ window.__ModuleLoader__.load({
       },
       grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '6px' },
       check: { display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', cursor: 'pointer' },
+      ellipsis: { flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
       fieldset: { border: '1px solid var(--dsw-alias-border-l1)', borderRadius: '10px', padding: '10px', margin: '0' },
       legend: { fontSize: '12px', color: 'var(--dsw-alias-label-secondary)', padding: '0 5px' },
     }
@@ -146,6 +167,30 @@ window.__ModuleLoader__.load({
       return h('button', {
         type: 'button', style, disabled: props.disabled === true, onClick: props.onClick, title: props.title,
       }, props.children)
+    }
+
+    /**
+     * 让非 button 元素成为 disclosure 触发器：
+     * role=button + tabIndex 提供键盘可达；Enter/Space 激活；选区非空时不触发。
+     */
+    function rowClickProps(onActivate) {
+      return {
+        role: 'button',
+        tabIndex: 0,
+        onClick: () => {
+          const selection = typeof window !== 'undefined' && window.getSelection
+            ? window.getSelection()
+            : null
+          if (selection && selection.toString().length > 0) return
+          onActivate()
+        },
+        onKeyDown: (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onActivate()
+          }
+        },
+      }
     }
 
     // -----------------------------------------------------------------------
@@ -352,6 +397,10 @@ window.__ModuleLoader__.load({
       const [editing, setEditing] = useState(null)
       const fileRef = useRef(null)
       const [busy, setBusy] = useState(false)
+      const [manual, setManual] = useState(null)
+
+      const cards = Array.isArray(state.cards) ? state.cards : []
+      const expanded = manual !== null ? manual : cards.length <= 8
 
       const onFiles = async (event) => {
         const files = Array.from(event.target.files || [])
@@ -415,8 +464,6 @@ window.__ModuleLoader__.load({
         setOpenId('')
       }
 
-      const open = state.cards.find((card) => card.id === openId)
-
       return h('div', { style: S.list }, [
         h('div', { key: 'imp', style: S.card }, [
           h('div', { key: 'a', style: S.between }, [
@@ -443,47 +490,69 @@ window.__ModuleLoader__.load({
           },
         }) : null,
 
-        state.cards.length === 0
+        cards.length === 0
           ? h('div', { key: 'empty', style: S.muted }, '还没有角色卡。')
-          : state.cards.map((card) => h('div', { key: card.id, style: S.item }, [
-            card.portrait
-              ? h('img', { key: 'p', src: card.portrait, style: S.thumb, alt: card.name })
-              : h('div', { key: 'p', style: { ...S.thumb, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--dsw-alias-label-secondary)', fontSize: '18px' } }, '🎭'),
-            h('div', { key: 'm', style: S.grow }, [
-              h('div', { key: 'n', style: S.name }, card.name),
-              h('div', { key: 's', style: S.muted }, [
-                card.spec,
-                card.creator ? `作者 ${card.creator}` : '',
-                `${card.greetingCount} 条开场白`,
-                card.hasCharacterBook ? '含内嵌世界书' : '',
-                card.tags.length ? card.tags.slice(0, 5).join(' / ') : '',
-              ].filter(Boolean).join(' · ')),
-              h('div', { key: 'b', style: { ...S.row, marginTop: '6px' } }, [
-                h(Btn, { key: 'e', disabled: busy, onClick: () => startEdit(card) }, '编辑'),
-                h(Btn, { key: 'd', onClick: () => setOpenId(openId === card.id ? '' : card.id) }, openId === card.id ? '收起' : '详情 / 开场白'),
-                card.hasCharacterBook ? h(Btn, { key: 'bk', disabled: busy, onClick: () => importBook(card) }, '导入内嵌世界书') : null,
-                h(Btn, { key: 'x', variant: 'danger', disabled: busy, onClick: () => remove(card) }, '删除'),
-              ]),
-            ]),
-          ])),
+          : h('div', { key: 'ctl', style: S.between }, [
+            h('span', { key: 'l', style: S.muted }, `共 ${cards.length} 张角色卡`),
+            h(Btn, { key: 'b', onClick: () => setManual(!expanded) }, expanded ? '收起' : `展开全部 ${cards.length} 张`),
+          ]),
 
-        open ? h('div', { key: 'detail', style: S.card }, [
-          h('div', { key: 'h', style: S.between }, [
-            h('span', { key: 't', style: S.name }, `${open.name} — 详情`),
-            h(Btn, { key: 'e', disabled: busy, onClick: () => startEdit(open) }, '编辑'),
-          ]),
-          open.description ? h('div', { key: 'd' }, [h('div', { key: 'l', style: S.label }, '角色简介'), h('pre', { key: 'p', style: S.pre }, open.description)]) : null,
-          open.personality ? h('div', { key: 'pe' }, [h('div', { key: 'l', style: S.label }, '性格'), h('pre', { key: 'p', style: S.pre }, open.personality)]) : null,
-          open.scenario ? h('div', { key: 'sc' }, [h('div', { key: 'l', style: S.label }, '场景'), h('pre', { key: 'p', style: S.pre }, open.scenario)]) : null,
-          h('div', { key: 'g', style: { marginTop: '10px' } }, [
-            h('div', { key: 'l', style: S.label }, '开场白（初始文本）'),
-            h(GreetingBlock, { key: 'b', greetings: [
-              open.firstMes ? { label: '开场白', text: open.firstMes } : null,
-              ...(open.alternateGreetings || []).map((text, index) => ({ label: `备用开场白 ${index + 1}`, text })),
-            ].filter(Boolean) }),
-          ]),
-          open.mesExample ? h('div', { key: 'me' }, [h('div', { key: 'l', style: S.label }, '对话示例'), h('pre', { key: 'p', style: S.pre }, open.mesExample)]) : null,
-        ]) : null,
+        expanded
+          ? cards.map((card) => {
+            const isOpen = openId === card.id
+            return h('div', { key: card.id }, [
+              h('div', {
+                key: 'card',
+                style: S.itemClickable,
+                ...rowClickProps(() => setOpenId(isOpen ? '' : card.id)),
+              }, [
+                card.portrait
+                  ? h('img', { key: 'p', src: card.portrait, style: S.thumb, alt: card.name })
+                  : h('div', { key: 'p', style: { ...S.thumb, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--dsw-alias-label-secondary)', fontSize: '18px' } }, '🎭'),
+                h('div', { key: 'm', style: S.grow }, [
+                  h('div', { key: 'n', style: { ...S.name, display: 'flex', alignItems: 'center', gap: '6px' } }, [
+                    h('span', { key: 'a', style: { flex: '0 0 auto', color: 'var(--dsw-alias-label-secondary)' } }, isOpen ? '▾' : '▸'),
+                    h('span', { key: 't', style: S.ellipsis }, card.name),
+                  ]),
+                  h('div', { key: 's', style: S.muted }, [
+                    card.spec,
+                    card.creator ? `作者 ${card.creator}` : '',
+                    `${card.greetingCount} 条开场白`,
+                    card.hasCharacterBook ? '含内嵌世界书' : '',
+                    card.tags.length ? card.tags.slice(0, 5).join(' / ') : '',
+                  ].filter(Boolean).join(' · ')),
+                  h('div', { key: 'b', style: { ...S.row, marginTop: '6px' } }, [
+                    h(Btn, { key: 'e', disabled: busy, onClick: (e) => { e.stopPropagation(); startEdit(card) } }, '编辑'),
+                    card.hasCharacterBook ? h(Btn, { key: 'bk', disabled: busy, onClick: (e) => { e.stopPropagation(); importBook(card) } }, '导入内嵌世界书') : null,
+                    h(Btn, { key: 'x', variant: 'danger', disabled: busy, onClick: (e) => { e.stopPropagation(); remove(card) } }, '删除'),
+                  ]),
+                ]),
+              ]),
+              isOpen ? h('div', { key: 'detail', style: { ...S.card, marginTop: '6px' } }, [
+                h('div', {
+                  key: 'bar',
+                  style: S.stickyBar,
+                  ...rowClickProps(() => setOpenId('')),
+                }, [
+                  h('span', { key: 'a', style: { flex: '0 0 auto', color: 'var(--dsw-alias-label-secondary)' } }, '▾'),
+                  h('span', { key: 'n', style: { ...S.name, ...S.ellipsis } }, `${card.name} — 详情`),
+                  h(Btn, { key: 'e', disabled: busy, onClick: (e) => { e.stopPropagation(); startEdit(card) } }, '编辑'),
+                ]),
+                card.description ? h('div', { key: 'd' }, [h('div', { key: 'l', style: S.label }, '角色简介'), h('pre', { key: 'p', style: S.pre }, card.description)]) : null,
+                card.personality ? h('div', { key: 'pe' }, [h('div', { key: 'l', style: S.label }, '性格'), h('pre', { key: 'p', style: S.pre }, card.personality)]) : null,
+                card.scenario ? h('div', { key: 'sc' }, [h('div', { key: 'l', style: S.label }, '场景'), h('pre', { key: 'p', style: S.pre }, card.scenario)]) : null,
+                h('div', { key: 'g', style: { marginTop: '10px' } }, [
+                  h('div', { key: 'l', style: S.label }, '开场白（初始文本）'),
+                  h(GreetingBlock, { key: 'b', greetings: [
+                    card.firstMes ? { label: '开场白', text: card.firstMes } : null,
+                    ...(card.alternateGreetings || []).map((text, index) => ({ label: `备用开场白 ${index + 1}`, text })),
+                  ].filter(Boolean) }),
+                ]),
+                card.mesExample ? h('div', { key: 'me' }, [h('div', { key: 'l', style: S.label }, '对话示例'), h('pre', { key: 'p', style: S.pre }, card.mesExample)]) : null,
+              ]) : null,
+            ])
+          })
+          : null,
       ])
     }
 
@@ -495,8 +564,13 @@ window.__ModuleLoader__.load({
       const { state, reload, notify } = props
       const [openId, setOpenId] = useState('')
       const [detail, setDetail] = useState(null)
+      const [openEntries, setOpenEntries] = useState(() => new Set())
       const fileRef = useRef(null)
       const [busy, setBusy] = useState(false)
+      const [manual, setManual] = useState(null)
+
+      const books = Array.isArray(state.worldbooks) ? state.worldbooks : []
+      const expanded = manual !== null ? manual : books.length <= 8
 
       const onFiles = async (event) => {
         const files = Array.from(event.target.files || [])
@@ -529,7 +603,11 @@ window.__ModuleLoader__.load({
         try {
           await call('/worldbook/delete', { id: book.id })
           notify(`已删除「${book.name}」`)
-          if (openId === book.id) { setOpenId(''); setDetail(null) }
+          if (openId === book.id) {
+            setOpenId('')
+            setDetail(null)
+            setOpenEntries(new Set())
+          }
           await reload()
         } catch (error) {
           notify(String((error && error.message) || error), 'error')
@@ -539,17 +617,32 @@ window.__ModuleLoader__.load({
       }
 
       const open = async (book) => {
-        if (openId === book.id) { setOpenId(''); setDetail(null); return }
+        if (openId === book.id) {
+          setOpenId('')
+          setDetail(null)
+          setOpenEntries(new Set())
+          return
+        }
         setBusy(true)
         try {
           const result = await call('/worldbook/detail', { id: book.id })
           setDetail(result.book)
           setOpenId(book.id)
+          setOpenEntries(new Set())
         } catch (error) {
           notify(String((error && error.message) || error), 'error')
         } finally {
           setBusy(false)
         }
+      }
+
+      const toggleEntry = (id) => {
+        setOpenEntries((prev) => {
+          const next = new Set(prev)
+          if (next.has(id)) next.delete(id)
+          else next.add(id)
+          return next
+        })
       }
 
       return h('div', { style: S.list }, [
@@ -566,38 +659,86 @@ window.__ModuleLoader__.load({
           }),
         ]),
 
-        state.worldbooks.length === 0
+        books.length === 0
           ? h('div', { key: 'empty', style: S.muted }, '还没有世界书。')
-          : state.worldbooks.map((book) => h('div', { key: book.id, style: S.item }, [
-            h('div', { key: 'm', style: S.grow }, [
-              h('div', { key: 'n', style: S.name }, book.name),
-              h('div', { key: 's', style: S.muted }, [
-                `${book.entryCount} 条条目`,
-                `${book.enabledCount} 条启用`,
-                `${book.constantCount} 条常驻`,
-                `${book.keywordCount} 条关键词`,
-                book.source === 'character_book' ? '来自角色卡' : '',
-              ].filter(Boolean).join(' · ')),
-              h('div', { key: 'b', style: { ...S.row, marginTop: '6px' } }, [
-                h(Btn, { key: 'd', onClick: () => open(book) }, openId === book.id ? '收起' : '查看条目'),
-                h(Btn, { key: 'x', variant: 'danger', disabled: busy, onClick: () => remove(book) }, '删除'),
-              ]),
-            ]),
-          ])),
+          : h('div', { key: 'ctl', style: S.between }, [
+            h('span', { key: 'l', style: S.muted }, `共 ${books.length} 本世界书`),
+            h(Btn, { key: 'b', onClick: () => setManual(!expanded) }, expanded ? '收起' : `展开全部 ${books.length} 本`),
+          ]),
 
-        openId && detail ? h('div', { key: 'detail', style: S.card }, [
-          h('div', { key: 'n', style: S.name }, `${detail.name} — 条目`),
-          h('div', { key: 'list' }, (detail.entries || []).map((entry) => h('div', { key: entry.id, style: { marginTop: '8px' } }, [
-            h('div', { key: 'h' }, [
-              h('span', { key: 'c', style: { fontWeight: 600 } }, entry.comment),
-              h('span', { key: 'k', style: { ...S.muted, marginLeft: '6px' } },
-                [entry.constant ? '常驻' : `关键词：${entry.keys.join('、') || '（无）'}`,
-                  entry.selective && entry.secondaryKeys.length ? `· 需附带：${entry.secondaryKeys.join('、')}` : '',
-                  entry.enabled ? '' : '· 已停用'].filter(Boolean).join(' ')),
-            ]),
-            h('pre', { key: 'p', style: S.pre }, entry.content),
-          ]))),
-        ]) : null,
+        expanded
+          ? books.map((book) => {
+            const isOpen = openId === book.id && detail !== null
+            const entries = isOpen && Array.isArray(detail.entries) ? detail.entries : []
+            return h('div', { key: book.id }, [
+              h('div', {
+                key: 'card',
+                style: S.itemClickable,
+                ...rowClickProps(() => open(book)),
+              }, [
+                h('div', { key: 'm', style: S.grow }, [
+                  h('div', { key: 'n', style: { ...S.name, display: 'flex', alignItems: 'center', gap: '6px' } }, [
+                    h('span', { key: 'a', style: { flex: '0 0 auto', color: 'var(--dsw-alias-label-secondary)' } }, isOpen ? '▾' : '▸'),
+                    h('span', { key: 't', style: S.ellipsis }, book.name),
+                  ]),
+                  h('div', { key: 's', style: S.muted }, [
+                    `${book.entryCount} 条条目`,
+                    `${book.enabledCount} 条启用`,
+                    `${book.constantCount} 条常驻`,
+                    `${book.keywordCount} 条关键词`,
+                    book.source === 'character_book' ? '来自角色卡' : '',
+                  ].filter(Boolean).join(' · ')),
+                  h('div', { key: 'b', style: { ...S.row, marginTop: '6px' } }, [
+                    h(Btn, {
+                      key: 'x',
+                      variant: 'danger',
+                      disabled: busy,
+                      onClick: (e) => { e.stopPropagation(); remove(book) },
+                    }, '删除'),
+                  ]),
+                ]),
+              ]),
+              isOpen ? h('div', { key: 'detail', style: { ...S.card, marginTop: '6px' } }, [
+                h('div', {
+                  key: 'bar',
+                  style: S.stickyBar,
+                  ...rowClickProps(() => open(book)),
+                }, [
+                  h('span', { key: 'a', style: { flex: '0 0 auto', color: 'var(--dsw-alias-label-secondary)' } }, '▾'),
+                  h('span', { key: 'n', style: { ...S.name, ...S.ellipsis } }, `${detail.name} — 条目（${entries.length}）`),
+                ]),
+                entries.length === 0
+                  ? h('div', { key: 'e', style: { ...S.muted, marginTop: '6px' } }, '这本书里没有可用条目。')
+                  : h('div', { key: 'list', style: { marginTop: '6px' } },
+                    entries.map((entry) => {
+                      const entryOpen = openEntries.has(entry.id)
+                      const meta = [
+                        entry.constant ? '常驻' : `关键词：${entry.keys.join('、') || '（无）'}`,
+                        entry.selective && entry.secondaryKeys.length ? `需附带：${entry.secondaryKeys.join('、')}` : '',
+                        entry.enabled ? '' : '已停用',
+                      ].filter(Boolean).join(' · ')
+                      return h('div', {
+                        key: entry.id,
+                        style: {
+                          borderTop: '1px solid var(--dsw-alias-border-l1)',
+                          paddingTop: '6px',
+                          marginTop: '6px',
+                          cursor: 'pointer',
+                        },
+                        ...rowClickProps(() => toggleEntry(entry.id)),
+                      }, [
+                        h('div', { key: 'h', style: { display: 'flex', alignItems: 'center', gap: '8px' } }, [
+                          h('span', { key: 'a', style: { flex: '0 0 auto', color: 'var(--dsw-alias-label-secondary)' } }, entryOpen ? '▾' : '▸'),
+                          h('span', { key: 'c', style: { ...S.ellipsis, flex: '0 1 auto', fontWeight: 600 } }, entry.comment),
+                          h('span', { key: 'k', style: { ...S.muted, ...S.ellipsis }, title: meta }, meta),
+                        ]),
+                        entryOpen ? h('pre', { key: 'p', style: S.pre }, entry.content) : null,
+                      ])
+                    })),
+              ]) : null,
+            ])
+          })
+          : null,
       ])
     }
 
@@ -607,20 +748,32 @@ window.__ModuleLoader__.load({
 
     function SkillsTab(props) {
       const { state } = props
+      const skills = Array.isArray(state.skills) ? state.skills : []
+      const [manual, setManual] = useState(null)
+      const expanded = manual !== null ? manual : skills.length <= 8
       return h('div', { style: S.list }, [
         h('div', { key: 'h', style: S.card }, [
-          h('div', { key: 't', style: S.name }, `DSH 技能目录（${state.skills.length}）`),
+          h('div', { key: 'a', style: S.between }, [
+            h('div', { key: 't', style: S.name }, `DSH 技能目录（${skills.length}）`),
+            skills.length > 0
+              ? h(Btn, { key: 'b', onClick: () => setManual(!expanded) }, expanded ? '收起' : `展开全部 ${skills.length} 个`)
+              : null,
+          ]),
           h('div', { key: 's', style: { ...S.muted, marginTop: '4px' } },
             '这些是本机 DSH 已安装的 Skill。在「预设」页把技能挂到某个角色上，它的内容会被写进角色的系统提示，让角色按需使用。'),
         ]),
-        ...state.skills.map((skill) => h('div', { key: skill.name, style: S.item }, [
-          h('div', { key: 'm', style: S.grow }, [
-            h('div', { key: 'n', style: S.name }, skill.name),
-            h('div', { key: 'd', style: S.muted }, skill.description || '（无描述）'),
-            skill.whenToUse ? h('div', { key: 'w', style: S.muted }, `适用：${skill.whenToUse}`) : null,
-            h('div', { key: 'p', style: { ...S.muted, marginTop: '2px' } }, `来源：${skill.provider} · ${skill.source}`),
-          ]),
-        ])),
+        skills.length === 0
+          ? h('div', { key: 'empty', style: S.muted }, '本机没有可用的技能。')
+          : expanded
+            ? skills.map((skill) => h('div', { key: skill.name, style: S.item }, [
+              h('div', { key: 'm', style: S.grow }, [
+                h('div', { key: 'n', style: S.name }, skill.name),
+                h('div', { key: 'd', style: S.muted }, skill.description || '（无描述）'),
+                skill.whenToUse ? h('div', { key: 'w', style: S.muted }, `适用：${skill.whenToUse}`) : null,
+                h('div', { key: 'p', style: { ...S.muted, marginTop: '2px' } }, `来源：${skill.provider} · ${skill.source}`),
+              ]),
+            ]))
+            : h('div', { key: 'hint', style: S.muted }, `已折叠 ${skills.length} 个技能。点击上方「展开全部」查看。`),
       ])
     }
 
@@ -683,6 +836,18 @@ window.__ModuleLoader__.load({
       decompress: 'billion-context',
       search_context: 'billion-context',
     }
+
+    /** 新建预设、以及每次打开「引导角色使用工具」开关时，默认勾选的工具。 */
+    const DEFAULT_TOOL_ALLOWLIST = [
+      'read',
+      'write',
+      'edit',
+      'glob',
+      'grep',
+      'read_image',
+      'web_search',
+      'web_fetch',
+    ]
 
     /**
      * 计算一张角色卡的所有开场白，索引语义与 Host 的 cardGreetings 一致：
@@ -769,7 +934,7 @@ window.__ModuleLoader__.load({
         id: '', name: '', cardId: '', greetingIndex: null, worldbookIds: [], skillNames: [],
         styleHint: defaultStyleHint,
         extraInstructions: '', complete: false, includeRuntimeContext: true,
-        enableTools: true, toolAllowlist: [], keepSections: [], keepSectionsEnabled: false,
+        enableTools: true, toolAllowlist: DEFAULT_TOOL_ALLOWLIST.slice(), keepSections: [], keepSectionsEnabled: false,
         workspaceEnabled: true, workspacePrefix: defaultWorkspacePrefix,
         userName: '', userGender: '', outputLanguage: '', maxEntries: 12, maxChars: 6000,
       }), [defaultStyleHint, defaultWorkspacePrefix])
@@ -779,6 +944,8 @@ window.__ModuleLoader__.load({
       const [greetFor, setGreetFor] = useState('')
       const [preview, setPreview] = useState(null)
       const [previewBusy, setPreviewBusy] = useState(false)
+      const [wbExpanded, setWbExpanded] = useState(false)
+      const [skExpanded, setSkExpanded] = useState(false)
 
       const set = (patch) => setDraft((current) => ({ ...current, ...patch }))
 
@@ -1025,20 +1192,56 @@ window.__ModuleLoader__.load({
             h('legend', { key: 'l', style: S.legend }, `世界书（${draft.worldbookIds.length} 已选）`),
             state.worldbooks.length === 0
               ? h('div', { key: 'e', style: S.muted }, '还没有世界书，请先在「世界书」页导入。')
-              : h('div', { key: 'g', style: S.grid }, state.worldbooks.map((book) => h('label', { key: book.id, style: S.check }, [
-                h('input', { type: 'checkbox', checked: draft.worldbookIds.includes(book.id), onChange: () => toggle('worldbookIds', book.id) }),
-                h('span', null, `${book.name}（${book.entryCount}）`),
-              ]))),
+              : h('div', { key: 'body' }, [
+                h('div', { key: 'bar', style: S.row }, [
+                  h('span', { key: 's', style: { ...S.muted, ...S.ellipsis } },
+                    draft.worldbookIds.length === 0
+                      ? '未选择'
+                      : draft.worldbookIds
+                        .map((id) => (state.worldbooks.find((b) => b.id === id) || {}).name || id)
+                        .join('、')),
+                  h(Btn, { key: 't', onClick: () => setWbExpanded(!wbExpanded) },
+                    wbExpanded ? '收起' : `选择…（共 ${state.worldbooks.length} 本）`),
+                ]),
+                wbExpanded
+                  ? h('div', { key: 'g', style: { ...S.grid, marginTop: '6px' } },
+                    state.worldbooks.map((book) => h('label', { key: book.id, style: S.check }, [
+                      h('input', {
+                        type: 'checkbox',
+                        checked: draft.worldbookIds.includes(book.id),
+                        onChange: () => toggle('worldbookIds', book.id),
+                      }),
+                      h('span', null, `${book.name}（${book.entryCount}）`),
+                    ])))
+                  : null,
+              ]),
           ]),
 
           h('fieldset', { key: 'sk', style: { ...S.fieldset, marginBottom: '8px' } }, [
             h('legend', { key: 'l', style: S.legend }, `技能（${draft.skillNames.length} 已选）`),
             state.skills.length === 0
               ? h('div', { key: 'e', style: S.muted }, '本机没有可用的 Skill。')
-              : h('div', { key: 'g', style: S.grid }, state.skills.map((skill) => h('label', { key: skill.name, style: S.check, title: skill.description }, [
-                h('input', { type: 'checkbox', checked: draft.skillNames.includes(skill.name), onChange: () => toggle('skillNames', skill.name) }),
-                h('span', null, skill.name),
-              ]))),
+              : h('div', { key: 'body' }, [
+                h('div', { key: 'bar', style: S.row }, [
+                  h('span', { key: 's', style: { ...S.muted, ...S.ellipsis } },
+                    draft.skillNames.length === 0
+                      ? '未选择'
+                      : draft.skillNames.join('、')),
+                  h(Btn, { key: 't', onClick: () => setSkExpanded(!skExpanded) },
+                    skExpanded ? '收起' : `选择…（共 ${state.skills.length} 个）`),
+                ]),
+                skExpanded
+                  ? h('div', { key: 'g', style: { ...S.grid, marginTop: '6px' } },
+                    state.skills.map((skill) => h('label', { key: skill.name, style: S.check, title: skill.description }, [
+                      h('input', {
+                        type: 'checkbox',
+                        checked: draft.skillNames.includes(skill.name),
+                        onChange: () => toggle('skillNames', skill.name),
+                      }),
+                      h('span', null, skill.name),
+                    ])))
+                  : null,
+              ]),
           ]),
 
           h('fieldset', { key: 'tools', style: { ...S.fieldset, marginBottom: '8px' } }, [
@@ -1051,7 +1254,9 @@ window.__ModuleLoader__.load({
               h('input', {
                 type: 'checkbox',
                 checked: draft.enableTools !== false,
-                onChange: (e) => set({ enableTools: e.target.checked }),
+                onChange: (e) => set(e.target.checked
+                  ? { enableTools: true, toolAllowlist: DEFAULT_TOOL_ALLOWLIST.slice() }
+                  : { enableTools: false }),
               }),
               h('span', null, '引导角色使用工具'),
             ]),
@@ -1095,7 +1300,7 @@ window.__ModuleLoader__.load({
               style: { cursor: 'pointer', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' },
             }, `工具白名单（${draft.toolAllowlist.length} / ${availableTools.length} 已选）`),
             h('div', { key: 'hint', style: { ...S.muted, marginTop: '6px' } },
-              '留空 = 不限制，所有工具都可用；勾选后只有列表里的工具会出现在请求里。'),
+              '留空 = 全选，所有工具都可用；勾选后只有列表里的工具会出现在请求里。'),
             availableTools.length === 0
               ? h('div', { key: 'e', style: { ...S.muted, marginTop: '6px' } },
                   '尚未采集到工具清单。运行一次任意 Bard 会话后，这里会显示可用工具。')
@@ -1443,7 +1648,6 @@ window.__ModuleLoader__.load({
           ]),
           h('div', { key: 'r', style: S.row }, [
             h('span', { key: 'c', style: S.muted }, `${counts.cards} 角色卡 · ${counts.worldbooks} 世界书 · ${counts.skills} 技能 · ${counts.presets} 预设`),
-            h(Btn, { key: 'r', onClick: () => load() }, '刷新'),
           ]),
         ]),
 
