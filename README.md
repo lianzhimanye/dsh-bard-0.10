@@ -38,6 +38,7 @@
   workspaces/<shortId>.json    每个 Bard 会话的工作区记录（懒清扫凭据）
   tool-catalog.json            工具清单缓存（每 agent 首轮采集一次）
   section-catalog.json         system prompt section 清单缓存（每 agent 首轮采集一次）
+  skill-catalog.json           技能清单及内容缓存（每 agent 创建时采集一次）
 ```
 
 写入是原子的（临时文件 + rename），崩溃不会留下半截记录。
@@ -136,8 +137,6 @@ profile 的 `package.json` 与 `cordis.patch.yml` 都受 HMR 监视：实时 pro
 | `locale/zh.json`、`locale/en.json` | 设置节的标题与描述 |
 
 ## 开发
-
-`tools/asar-extract.mjs` 是开发辅助脚本，用来读 DSH 自身的 `app.asar`，跟插件运行无关。
 
 语法检查：
 

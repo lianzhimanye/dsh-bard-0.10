@@ -568,6 +568,7 @@ window.__ModuleLoader__.load({
       const fileRef = useRef(null)
       const [busy, setBusy] = useState(false)
       const [manual, setManual] = useState(null)
+      const openRequestRef = useRef(0)
 
       const books = Array.isArray(state.worldbooks) ? state.worldbooks : []
       const expanded = manual !== null ? manual : books.length <= 8
@@ -618,21 +619,28 @@ window.__ModuleLoader__.load({
 
       const open = async (book) => {
         if (openId === book.id) {
+          // 关闭也要让在途请求失效，否则它回来时会把详情重新打开。
+          openRequestRef.current += 1
           setOpenId('')
           setDetail(null)
           setOpenEntries(new Set())
           return
         }
+        const requestId = ++openRequestRef.current
         setBusy(true)
         try {
           const result = await call('/worldbook/detail', { id: book.id })
+          // 慢响应回来时用户可能已经点了另一本；只认最新一次请求。
+          if (requestId !== openRequestRef.current) return
           setDetail(result.book)
           setOpenId(book.id)
           setOpenEntries(new Set())
         } catch (error) {
+          if (requestId !== openRequestRef.current) return
           notify(String((error && error.message) || error), 'error')
         } finally {
-          setBusy(false)
+          // 过期请求不能把 busy 清掉——新请求还在进行中。
+          if (requestId === openRequestRef.current) setBusy(false)
         }
       }
 
