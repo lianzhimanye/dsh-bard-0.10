@@ -1043,6 +1043,123 @@ window.__ModuleLoader__.load({
       ])
     }
 
+    // -----------------------------------------------------------------------
+    // Alzheimer Settings (独立分区)
+    // -----------------------------------------------------------------------
+
+    function AlzheimerSettings() {
+      const [state, setState] = useState(null)
+      const [failure, setFailure] = useState('')
+      const [notice, setNotice] = useState(null)
+      const [selectedId, setSelectedId] = useState('')
+
+      const notify = useCallback((text, kind) => { setNotice({ text, kind: kind === 'error' ? 'error' : 'info' }) }, [])
+      const load = useCallback(async () => {
+        try {
+          const next = await call('/memory/state')
+          setState(next)
+          setFailure('')
+        } catch (error) { setFailure(String((error && error.message) || error)) }
+      }, [])
+
+      useEffect(() => { load() }, [load])
+
+      if (failure) {
+        return h('div', { className: 'dsh-bard-scope', style: S.page }, [
+          h('div', { key: 't', style: S.name }, '阿尔兹海默'),
+          h('div', { key: 'e', style: S.alert }, `读取失败：${failure}`),
+          h(Btn, { key: 'r', onClick: load }, '重试'),
+        ])
+      }
+      if (!state) return h('div', { className: 'dsh-bard-scope', style: S.page }, [h('div', { key: 'l', style: S.muted }, '正在读取…')])
+
+      const personas = Array.isArray(state.personas) ? state.personas : []
+      const effectiveId = selectedId && personas.some((p) => p.id === selectedId) ? selectedId : (personas[0]?.id || '')
+      const selected = personas.find((p) => p.id === effectiveId)
+
+      return h('div', { className: 'dsh-bard-scope', style: S.page }, [
+        h('div', { key: 'head', style: S.between }, [
+          h('div', { key: 'l' }, [
+            h('div', { key: 't', style: { ...S.name, fontSize: '20px' } }, '阿尔兹海默'),
+            h('div', { key: 's', style: { ...S.muted, marginTop: '4px' } }, '她的一生。记忆会散，但叙事还在。'),
+          ]),
+          h('span', { key: 'c', style: S.muted }, `${personas.length} 个人格`),
+        ]),
+
+        notice ? h('div', { key: 'n', style: notice.kind === 'error' ? S.alert : S.ok }, notice.text) : null,
+
+        personas.length === 0
+          ? h('div', { key: 'empty', style: S.card }, [
+            h('div', { key: 't', style: S.name }, '还没有人格'),
+            h('div', { key: 's', style: { ...S.muted, marginTop: '6px' } }, '在「预设」里创建一个预设，并为它绑定一个新人格。'),
+          ])
+          : h('div', { key: 'body', style: S.list }, [
+            h('div', { key: 'sel', style: S.row }, [
+              h('span', { key: 'l', style: S.label }, '选择人格'),
+              h('select', {
+                key: 's', style: { ...S.select, maxWidth: '400px' },
+                value: effectiveId,
+                onChange: (e) => setSelectedId(e.target.value),
+              }, personas.map((p) => h('option', { key: p.id, value: p.id }, `${p.name || p.id} · 第 ${p.generation} 世`))),
+            ]),
+            selected ? renderPersonaDetail(selected, notify, load) : null,
+          ]),
+      ])
+    }
+
+    function renderPersonaDetail(persona, notify, reload) {
+      const memories = Array.isArray(persona.memories) ? persona.memories : []
+      const impressions = Array.isArray(persona.impressions) ? persona.impressions : []
+      const active = memories.filter((m) => m.state === 'active' || m.state === 'held')
+      const fading = memories.filter((m) => m.state === 'fading' || m.state === 'faded')
+      const ratio = typeof persona.anchoredRatio === 'number' ? persona.anchoredRatio : 1
+      return h('div', { key: 'detail', style: S.list }, [
+        h('div', { key: 'stat', style: S.card }, [
+          h('div', { key: 't', style: S.name }, `${persona.name || persona.id}`),
+          h('div', { key: 'm', style: { ...S.muted, marginTop: '6px' } }, [
+            `第 ${persona.generation} 世`,
+            `${active.length} 条清晰`,
+            `${fading.length} 条模糊`,
+            `${impressions.length} 条印象`,
+            `带锚比例 ${(ratio * 100).toFixed(0)}%`,
+          ].join(' · ')),
+          h('div', { key: 'id', style: { ...S.muted, fontFamily: 'monospace', marginTop: '4px' } }, persona.id),
+        ]),
+
+        h(Section, { key: 'mem', title: `记忆（${memories.length}）`, defaultOpen: true }, [
+          memories.length === 0 ? h('div', { key: 'e', style: S.muted }, '她还没有写下任何记忆。')
+            : h('div', { key: 'list', style: S.list }, memories.slice().reverse().map((m) => h('div', { key: m.id, style: S.item }, [
+              h('div', { key: 'm', style: S.grow }, [
+                h('div', { key: 't', style: { ...S.prose, fontSize: '13px' } }, m.text),
+                h('div', { key: 's', style: { ...S.muted, marginTop: '4px' } }, [
+                  m.state === 'held' ? '抓住' : m.state === 'fading' ? '正在模糊' : m.state === 'faded' ? '已模糊' : '清晰',
+                  `清晰度 ${(m.clarity * 100).toFixed(0)}%`,
+                  `讲过 ${m.restateCount || 0} 次`,
+                  m.scene ? `场景：${m.scene}` : '',
+                ].filter(Boolean).join(' · ')),
+              ]),
+            ]))),
+        ]),
+
+        impressions.length > 0 ? h(Section, { key: 'imp', title: `印象（${impressions.length}）`, defaultOpen: false }, [
+          h('div', { key: 'list', style: S.list }, impressions.map((imp) => h('div', { key: imp.id, style: S.item }, [
+            h('div', { key: 'm', style: S.grow }, [
+              h('div', { key: 't', style: { ...S.prose, fontSize: '13px', opacity: 0.7 } }, imp.text),
+              h('div', { key: 's', style: { ...S.muted, marginTop: '4px' } }, `${imp.count} 条记忆的轮廓`),
+            ]),
+          ]))),
+        ]) : null,
+
+        h(Section, { key: 'nar', title: '叙事弧', defaultOpen: true }, [
+          (persona.chapters || []).map((ch, i) => h('div', { key: i, style: { marginBottom: '12px' } }, [
+            h('div', { key: 'h', style: { ...S.label } }, `第 ${ch.generation} 世${ch.endedAt ? '（已结束）' : '（此刻）'}`),
+            ch.summary ? h('div', { key: 's', style: S.prose }, ch.summary) : h('div', { key: 'e', style: S.muted }, '还没有写下这一世的总结。'),
+            ch.farewell ? h('div', { key: 'f', style: { ...S.quote, marginTop: '8px' } }, ch.farewell) : null,
+          ])),
+        ]),
+      ])
+    }
+
     function PresetsTab(props) {
       const { state, reload, notify, cardDetails, ensureCardDetail } = props
       const defaults = (state && state.defaults) || {}
@@ -1410,6 +1527,10 @@ window.__ModuleLoader__.load({
         ctx.slots.inject('settings.section', () => ctx.slots.register(
           { name: 'settings.section', id: 'bard', order: 25, label: '吟游' },
           BardSettings,
+        ))
+        ctx.slots.inject('settings.section', () => ctx.slots.register(
+          { name: 'settings.section', id: 'bard-memory', order: 26, label: '阿尔兹海默' },
+          AlzheimerSettings,
         ))
       },
     }
