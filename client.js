@@ -952,9 +952,10 @@ window.__ModuleLoader__.load({
 
     function BlockEditor(props) {
       const { draft, setDraft, availableBlocks } = props
+      const defs = Array.isArray(props.blockDefs) && props.blockDefs.length > 0 ? props.blockDefs : BLOCKS
       const [editing, setEditing] = useState('')
       const [buffer, setBuffer] = useState('')
-      const states = normalizeBlocksClient(draft.blocks)
+      const states = normalizeBlocksClient(draft.blocks, draft, defs)
       const info = new Map((Array.isArray(availableBlocks) ? availableBlocks : []).map((b) => [b.id, b]))
 
       const orderOf = (def) => {
@@ -963,15 +964,15 @@ window.__ModuleLoader__.load({
         const meta = info.get(def.id); if (meta && Number.isFinite(meta.order)) return meta.order
         return def.order
       }
-      const sorted = BLOCKS.slice().sort((a, b) => orderOf(a) - orderOf(b))
+      const sorted = defs.slice().sort((a, b) => orderOf(a) - orderOf(b))
 
       const setBlock = (id, patch) => setDraft((d) => {
-        const next = normalizeBlocksClient(d.blocks); next[id] = { ...next[id], ...patch }
+        const next = normalizeBlocksClient(d.blocks, d, defs); next[id] = { ...next[id], ...patch }
         return { ...d, blocks: next }
       })
       const setAll = (enabled) => setDraft((d) => {
-        const next = normalizeBlocksClient(d.blocks)
-        for (const def of BLOCKS) next[def.id] = { ...next[def.id], enabled }
+        const next = normalizeBlocksClient(d.blocks, d, defs)
+        for (const def of defs) next[def.id] = { ...next[def.id], enabled }
         return { ...d, blocks: next }
       })
       const move = (def, delta) => {
@@ -980,7 +981,7 @@ window.__ModuleLoader__.load({
         const other = visible[at + delta]; if (!other) return
         const a = orderOf(def), b = orderOf(other)
         setDraft((d) => {
-          const next = normalizeBlocksClient(d.blocks)
+          const next = normalizeBlocksClient(d.blocks, d, defs)
           next[def.id] = { ...next[def.id], order: a === b ? b + delta : b }
           next[other.id] = { ...next[other.id], order: a === b ? a - delta : a }
           return { ...d, blocks: next }
@@ -1032,7 +1033,7 @@ window.__ModuleLoader__.load({
         h('div', { key: 'act', style: { ...S.row, marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--dsw-alias-border-l1)' } }, [
           h(Btn, { key: 'on', onClick: () => setAll(true) }, '全部启用'),
           h(Btn, { key: 'off', onClick: () => setAll(false) }, '全部停用'),
-          h(Btn, { key: 'rst', onClick: () => setDraft((d) => { const next = normalizeBlocksClient(d.blocks); for (const def of BLOCKS) next[def.id] = { ...next[def.id], order: null }; return { ...d, blocks: next } }) }, '恢复默认顺序'),
+          h(Btn, { key: 'rst', onClick: () => setDraft((d) => { const next = normalizeBlocksClient(d.blocks, d, defs); for (const def of defs) next[def.id] = { ...next[def.id], order: null }; return { ...d, blocks: next } }) }, '恢复默认顺序'),
         ]),
       ])
     }
@@ -1046,6 +1047,7 @@ window.__ModuleLoader__.load({
       const availableSections = Array.isArray(state.availableSections) ? state.availableSections : []
       const bardRequiredSections = Array.isArray(state.bardRequiredSections) ? state.bardRequiredSections : []
       const toolSectionPrefix = typeof state.toolSectionPrefix === 'string' && state.toolSectionPrefix.length > 0 ? state.toolSectionPrefix : 'tool:'
+      const blockDefs = Array.isArray(state.bardBlocks) && state.bardBlocks.length > 0 ? state.bardBlocks : BLOCKS
 
       const emptyDraft = useCallback(() => ({
         id: '', name: '', cardId: '', greetingIndex: null, worldbookIds: [], skillNames: [],
@@ -1094,7 +1096,7 @@ window.__ModuleLoader__.load({
           outputLanguage: preset.options.outputLanguage || '',
           maxEntries: Number.isFinite(preset.options.maxEntries) ? preset.options.maxEntries : 12,
           maxChars: Number.isFinite(preset.options.maxChars) ? preset.options.maxChars : 6000,
-          blocks: normalizeBlocksClient(preset.options.blocks),
+          blocks: normalizeBlocksClient(preset.options.blocks, preset.options, blockDefs),
         })
       }
 
@@ -1206,7 +1208,7 @@ window.__ModuleLoader__.load({
           ]),
 
           h(Section, { key: 'sec-blocks', title: '提示词编排', defaultOpen: false }, [
-            h(BlockEditor, { key: 'blocks', draft, setDraft, availableBlocks: preview ? preview.blocks : [] }),
+            h(BlockEditor, { key: 'blocks', draft, setDraft, availableBlocks: preview ? preview.blocks : [], blockDefs }),
           ]),
 
           h(Section, { key: 'sec-adv', title: '高级设置与风格', defaultOpen: false }, [
