@@ -1114,8 +1114,25 @@ window.__ModuleLoader__.load({
       const fading = memories.filter((m) => m.state === 'fading' || m.state === 'faded')
       const ratio = typeof persona.anchoredRatio === 'number' ? persona.anchoredRatio : 1
       return h('div', { key: 'detail', style: S.list }, [
-        h('div', { key: 'stat', style: S.card }, [
-          h('div', { key: 't', style: S.name }, `${persona.name || persona.id}`),
+               h('div', { key: 'stat', style: S.card }, [
+          h('div', { key: 'head', style: S.between }, [
+            h('div', { key: 't', style: S.name }, `${persona.name || persona.id}`),
+            h(Btn, { 
+              variant: 'danger', 
+              onClick: async () => {
+                if (!window.confirm(`彻底遗忘「${persona.name || persona.id}」？\n\n记忆、叙事和人格将被永久删除。这是不可逆的。`)) return
+                try {
+                  const res = await call('/persona/delete', { id: persona.id, force: true })
+                  if (res.ok) {
+                    notify('已遗忘。')
+                    reload() // 刷新列表
+                  } else {
+                    notify(res.error || '遗忘失败', 'error')
+                  }
+                } catch (e) { notify(String(e.message), 'error') }
+              } 
+            }, '遗忘')
+          ]),
           h('div', { key: 'm', style: { ...S.muted, marginTop: '6px' } }, [
             `第 ${persona.generation} 世`,
             `${active.length} 条清晰`,
@@ -1172,7 +1189,7 @@ window.__ModuleLoader__.load({
       const blockDefs = Array.isArray(state.bardBlocks) && state.bardBlocks.length > 0 ? state.bardBlocks : BLOCKS
 
       const emptyDraft = useCallback(() => ({
-        id: '', name: '', cardId: '', greetingIndex: null, worldbookIds: [], skillNames: [],
+        id: '', name: '', cardId: '', greetingIndex: null,  personaId: '',worldbookIds: [], skillNames: [],
         styleHint: defaultStyleHint, extraInstructions: '', complete: false, includeRuntimeContext: true,
         enableTools: true, toolAllowlist: DEFAULT_TOOL_ALLOWLIST.slice(), keepSections: [], keepSectionsEnabled: false,
         workspaceEnabled: true, workspacePrefix: defaultWorkspacePrefix,
@@ -1204,6 +1221,7 @@ window.__ModuleLoader__.load({
         const greetings = greetingsForDetail(detail)
         const rawIndex = Number.isInteger(preset.options.greetingIndex) && preset.options.greetingIndex >= 0 ? preset.options.greetingIndex : null
         setDraft({
+          personaId: preset.options.personaId || '',
           id: preset.id, name: preset.name, cardId: preset.cardId,
           greetingIndex: rawIndex !== null && rawIndex < greetings.length ? rawIndex : null,
           worldbookIds: preset.worldbookIds.slice(), skillNames: preset.skillNames.slice(),
@@ -1288,6 +1306,28 @@ window.__ModuleLoader__.load({
                 h('option', { key: '', value: '' }, '— 请选择 —'),
                 ...state.cards.map((card) => h('option', { key: card.id, value: card.id }, card.name)),
               ])),
+            ]),
+                        h(Field, { key: 'persona', label: '绑定人格（阿尔兹海默）' }, [
+              h('div', { key: 'row', style: { ...S.row, alignItems: 'stretch' } }, [
+                h('select', { 
+                  style: { ...S.select, flex: '1 1 auto' }, 
+                  value: draft.personaId, 
+                  onChange: (e) => set({ personaId: e.target.value }) 
+                }, [
+                  h('option', { key: '', value: '' }, '— 不绑定（普通模式） —'),
+                  ...state.personas.map((p) => h('option', { key: p.id, value: p.id }, `${p.name}（第 ${p.generation} 世）`))
+                ]),
+                h(Btn, { 
+                  onClick: async () => {
+                    try {
+                      const res = await call('/persona/create', { cardId: draft.cardId, name: draft.name });
+                      notify('人格已创建并绑定');
+                      set({ personaId: res.persona.id });
+                      await reload();
+                    } catch (e) { notify(String(e.message), 'error') }
+                  } 
+                }, '+ 新建人格')
+              ])
             ]),
             h('div', { key: 'f2', style: { ...S.grid, marginBottom: '12px' } }, [
               h(Field, { key: 'greet', label: '开场白注入（可选）' }, [
