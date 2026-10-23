@@ -628,10 +628,15 @@ window.__ModuleLoader__.load({
             }))
             notify('角色卡 JSON 导入成功')
           } else {
-            if (Array.isArray(data)) {
-              setBookDraft(prev => ({ ...prev, entries: data }))
-            } else if (data.entries && Array.isArray(data.entries)) {
-              setBookDraft({ name: data.name || bookDraft.name, entries: data.entries })
+            const inner = data.data || data
+            if (Array.isArray(inner)) {
+              setBookDraft(prev => ({ ...prev, entries: inner }))
+            } else if (Array.isArray(inner.entries)) {
+              setBookDraft(prev => ({
+                ...prev,
+                name: (typeof inner.name === 'string' && inner.name.trim()) ? inner.name : prev.name,
+                entries: inner.entries,
+              }))
             } else {
               throw new Error('格式错误：找不到 entries 数组')
             }
@@ -749,7 +754,7 @@ window.__ModuleLoader__.load({
       }
       const removeBookEntry = (idx) => {
         setBookDraft(prev => ({ ...prev, entries: prev.entries.filter((_, i) => i !== idx) }))
-        if (editingEntryIndex === idx) setEditingEntryIndex(-1)
+        setEditingEntryIndex(prev => (prev === idx ? -1 : (prev > idx ? prev - 1 : prev)))
       }
       const updateEntry = (idx, patch) => {
         setBookDraft(prev => {
