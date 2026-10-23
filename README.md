@@ -73,19 +73,20 @@ profile 的 `package.json` 与 `cordis.patch.yml` 都受 HMR 监视：实时 pro
 启用后：
 
 1. 插件会在 `$DSH_HOME/bard/` 下创建 `cards` / `worldbooks` / `portraits` / `presets` 四个目录；
-2. **设置 → 吟游** 出现四个标签页：角色卡、世界书、技能、预设；
+2. **设置 → 吟游** 出现五个标签页：角色卡、世界书、技能、预设、女娲；
 3. 会话的预设选择器里出现「吟游 · …」条目。
 
 ## 使用
 
 ### 界面
 
-**设置 → 吟游**，四个标签页：
+**设置 → 吟游**，五个标签页：
 
 - **角色卡** — 导入 JSON / PNG 卡，预览立绘、简介、开场白，删除卡片（会提示哪些预设正在引用它）
 - **世界书** — 导入世界书；角色卡内嵌的世界书可一键提取；查看条目与关键词
 - **技能** — 从 Harness 技能列表里勾选，绑定进预设
 - **预设** — 选角色卡 + 世界书 + 技能，命名并保存；保存后立即注册为原生 agent preset
+- **女娲** — 手动新建 / 编辑角色卡与世界书；支持 JSON 导入导出、PNG 注入；可一键安装「千面」「万物」向导预设
 
 ### 命令
 
@@ -112,9 +113,9 @@ profile 的 `package.json` 与 `cordis.patch.yml` 都受 HMR 监视：实时 pro
 - `inject: ['webServer']`，插件名 `bard`。
 - 把每个吟游预设注册成原生 agent preset，名称前缀 `bard-`，排序基址 `PRESET_ORDER_BASE = 50`（排在 Harness 自带预设之后）。
 - 预设的插件列表从 profile 当前默认 agent preset 的 `inherited.plugins` 深拷贝而来，取不到时回退到一份内置工具清单——这样吟游预设与用户当前的默认配置保持一致。
-- 通过 `agentPresets.composedPreset(agent.ctx)` 判断某个 agent 是否正在跑吟游预设；是则用 `agent.ctx.get('systemPrompt').context({ name: 'bard:world-book', order: 130, text })` 注入世界书。
+- 通过 `agentPresets.composedPreset(agent.ctx)` 判断某个 agent 是否正在跑吟游预设；是则用 `agent.ctx.get('systemPrompt').section({ name: 'bard:world-book', order: 130, text })` 注入世界书。**必须用 `section()`，不得用 `context()`**——`context()` 注册的内容不会出现在 `assembly.sections`，`system-prompt/assemble` 的过滤逻辑看不见它。
 - **所有服务都必须从 `agent.ctx` 获取，不能从插件的全局 `ctx` 获取。** `systemPrompt.section()` / `context()` 会把注册落到「访问服务时所用 ctx 的 scope 层」——插件 ctx 没有 scope 标签，写进去会落到全局层：第一个 agent 侥幸成功，之后每个 agent 都撞上 `already registered` 异常并被静默吞掉；而且注册的生命周期跟插件走，不跟 agent 走。`tools` 服务同样是按 scope 分的，从插件 ctx 拿只能看到内核常驻工具（`compress`、`decompress` 等），看不到 `read` / `write` / `pwsh`——所以 `agent.ctx.get('tools')` 是必须的。
-- 17 个提示词块通过 `agent.ctx.get('systemPrompt').context({ name: 'bard:<id>', order, text })` 注册（`registerAgentBlocks`）。注册 order 仅为占位，实际顺序由 `system-prompt/assemble` waterfall 按 `preset.options.blocks[id].order` 重排。`complete: true` 由 waterfall 实现（只保留 `bard:*` 与 `deployment:persona-*`），persona 行的 `config.complete` 恒为 `false`。`{{bard_tools}}` / `{{bard_workspace}}` 保留在 `agency` 块正文内，由 prompt variable 替换。
+- 17 个提示词块通过 `agent.ctx.get('systemPrompt').section({ name: 'bard:<id>', order, text })` 注册（`registerAgentBlocks`）。注册 order 仅为占位，实际顺序由 `system-prompt/assemble` waterfall 按 `preset.options.blocks[id].order` 重排。`complete: true` 由 waterfall 实现（只保留 `bard:*` 与 `deployment:persona-*`），persona 行的 `config.complete` 恒为 `false`。`{{bard_tools}}` / `{{bard_workspace}}` 保留在 `agency` 块正文内，由 prompt variable 替换。
 - 工具清单通过 `agent.ctx.get('systemPrompt').variable('bard_tools', provider)` 注入，而不再是一个独立 section。原因是 section 在 DSH 里是**原子单位**：它只在顶层按 order 互相排序、再拼成 prompt 正文，没有任何接口能把文本插进某个 section 内部——清单只能在块旁边，永远到不了【关于你自己】段的最后一句正下方。prompt 变量不占位置、只做替换：`agency` 块正文里直接写 `{{bard_tools}}`，assemble 时 DSH 对该 section 文本逐个变量求值，引用点就被就地换成清单。`provider` 每次请求前由 DSH 求值；`agent/created` 时 Bard 预设尚未应用到 agent 的 ctx，任何基于 `composedPreset()` 的外层判断都会早退，因此全部逻辑都在 provider 内部。渲染结果按 preset id 缓存：provider 每轮都跑，但只有 composed preset 真正变化时才重算。世界书注入（`bard:world-book`，order 130）同样是 thunk，且每轮重新选择条目、不缓存；它不是提示词块，永不被块的开关过滤。
 - 工具白名单通过 `agent.ctx.effect(() => tools.restrict({ allow }), 'bard.tool-filter')` 注册。`restrict` 只过滤 scope **继承**来的工具（全局层与祖先层），不过滤 scope 自身注册的——这是设计豁免：delegation runtime 需要把子 agent 的 structured-output 工具写进子 agent 自己的层。因此 Agent Teams 的 11 个工具（`spawn_teammate` / `send_message` / `team_task_*` 等）注册在 agent 自身层，白名单盖不住。白名单用于控制全局层工具（`compress` / `acp_status` / `load_workspace_dependencies` 等）是否出现。
 - Section 白名单与 `complete` 都通过 `system-prompt/assemble` 的 **waterfall** 实现。`assemble` 会构造 `assembly` 对象（含全部 section），把 `next` 作为末尾参数传给每个 listener；listener **原地修改** `assembly.sections` 后 `return next()`。waterfall 的 `next()` 不接收参数——返回值被静默丢弃——所以传播只能靠原地修改。监听器从 `agent.ctx` 注册，effect 随 agent 生命周期销毁。三种模式互斥：`complete: true` 只保留 `bard:*` 与 `deployment:persona-*`；白名单模式下 `bard:*` 走 `blocks[id].enabled`、其余 section 走 `shouldKeepSection`；两者都不用时只丢弃停用块。`complete` 不再挂在 persona 行上——persona 行若自己 `complete`，会先丢掉 `bard:*` 块，水线就再也救不回来。最后统一按 order 重排：块用 `blocks[id].order`，原生 section 用自带 order。`section-catalog.json` 在 agent 首轮请求时采集（只采集非 `bard:*` 的原生 section），此后不再写——后续请求的 section 列表可能已被白名单裁剪，重复采集会把清单越缩越小。
@@ -136,7 +137,7 @@ profile 的 `package.json` 与 `cordis.patch.yml` 都受 HMR 监视：实时 pro
 | `lib/lorebook.js` | 世界书归一化、关键词选择、渲染 |
 | `lib/persona.js` | 提示词块渲染：17 块的默认文本、用户 override、启用判定 |
 | `lib/store.js` | 原子文件存储与目录管理 |
-| `client.js` | Web 设置页（四个标签页） |
+| `client.js` | Web 设置页（五个标签页，含女娲） |
 | `cordis.patch.yml` | bundle patch：插入 `bard` 行 |
 | `locale/zh.json`、`locale/en.json` | 设置节的标题与描述 |
 
