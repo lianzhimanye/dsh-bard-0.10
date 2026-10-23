@@ -921,13 +921,15 @@ window.__ModuleLoader__.load({
       { id: 'depth', title: '角色的持续提醒', order: 350 }, { id: 'postHistory', title: '每轮都要遵守', order: 360 },
     ]
 
-    function normalizeBlocksClient(raw) {
+    function normalizeBlocksClient(raw, options, defs) {
       const src = raw && typeof raw === 'object' ? raw : {}
+      const list = Array.isArray(defs) && defs.length > 0 ? defs : BLOCKS
       const out = {}
-      for (const def of BLOCKS) {
+      for (const def of list) {
         const item = src[def.id] || {}
         out[def.id] = { enabled: item.enabled !== false, order: Number.isFinite(item.order) ? item.order : null, text: typeof item.text === 'string' ? item.text : null }
       }
+      if (options && options.enableTools === false && out.agency) out.agency.enabled = false
       return out
     }
 
