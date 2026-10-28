@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Tavern">
-  <rect x="6" y="20" width="52" height="34" rx="5" fill="#8b5e34"/>
-  <path d="M6 22 L32 6 L58 22 Z" fill="#c0392b"/>
-  <rect x="16" y="32" width="12" height="12" rx="2" fill="#f7e8c8"/>
-  <rect x="36" y="32" width="12" height="12" rx="2" fill="#f7e8c8"/>
-  <rect x="27" y="44" width="10" height="10" rx="1.5" fill="#5b3a1e"/>
-</svg>

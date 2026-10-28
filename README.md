@@ -1,154 +1,305 @@
-# dsh-bard · 吟游角色扮演
+# 吟游（Bard）
 
-给 DeepSeek Harness 加上「吟游」式的角色扮演能力：导入 SillyTavern 角色卡和世界书，挑选 Harness 技能，把组合存成一个**原生 DSH agent preset**，然后在会话里用 Harness 自己的预设选择器选它即可开演。
-
-插件不会另造一套对话循环——它把吟游的素材翻译成 Harness 原生的东西（agent preset、system prompt 上下文、技能列表），所以历史记录、工具、权限、上下文压缩全部沿用 Harness 既有行为。
+> 一个会遗忘、会告别、会转世的角色扮演运行时，为 DeepSeek Harness 而做。
 
 ---
 
-## 它做什么
+## 这是什么
 
-| 能力 | 说明 |
-| --- | --- |
-| 角色卡导入 | SillyTavern V1 / V2 / V3 卡片；JSON 文件，或 PNG 卡片（读 `tEXt` 块，`ccv3` 优先于 `chara`） |
-| 世界书导入 | 独立世界书 JSON，或角色卡内嵌的 `character_book`（可一键抽出来存成独立世界书） |
-| 关键词选择 | 世界书条目按关键词、常驻（constant）、次级门控（secondary keys）命中，停用条目跳过 |
-| 预算裁剪 | 按条数和字符双预算裁剪，且**排名最高的条目即使超预算也强制注入** |
-| 技能绑定 | 一个预设可绑定若干 Harness 技能，随 system prompt 一起生效 |
-| 工具开关 | 创建/编辑预设时可关闭工具调用；关闭后生成的预设不携带任何工具定义，适配纯文本模型。与 `complete` 独立控制 |
-| 工具白名单 | 每个预设可勾选允许进入请求的工具；留空 = 不限制。工具定义按 `agent.ctx` 采集，写入 `tool-catalog.json` 供界面读取。与「工具开关」解耦：关闭工具开关会连带清空白名单 |
-| Section 白名单 | 每个预设可从完整 system prompt 中挑选要保留的 section（按名精确匹配）；留空 = 保留全部。与 `complete` 互斥：勾选任一 section 会自动关闭 complete |
-| 提示词块 | persona 前缀拆为 17 个独立 section，每块可独立启用/停用、排序、编辑文案；编辑仅作用于当前预设，不改角色卡。`complete` 新语义为「只保留 bard 块 + persona 前后缀」 |
-| 你的名字 | 每个预设可指定 `{{user}}` 的替换值；角色卡里的 `{{char}}`、`{{user}}` 等 SillyTavern 宏会在渲染时自动替换，未知宏降级为 `[[...]]` 而不报错 |
-| 玩家性别 | 每个预设可指定玩家性别（未指定 / 男 / 女 / 自定义文本）；写进「关于玩家」提示词块（`bard:gender`），避免模型因玩家的中性名字猜错代词 |
-| 开场白 | 读取角色卡的 `first_mes` 与 `alternate_greetings`，可在界面里预览，也能用命令输出 |
-| 预设落库 | 保存为原生 agent preset，名称前缀 `bard-`，出现在 Harness 的预设选择器里 |
-| 立绘 | 导入 PNG 卡时保留原图，界面里直接显示 |
+BARD 做的是：把 DSH 生态里已有的能力组织成一个**角色可以自己选择拥有什么**的运行环境。
 
-## 数据存放
+- 你不必写代码。装好 DSH 插件后，在设置页导入角色卡、选世界书、勾工具，就能开始扮演。
+- 角色会遗忘。没被重述的记忆会慢慢模糊。她可以选择抓住，也可以选择放手。
+- 她知道自己会死。上下文逼近上限时，她会调用 `farewell` 写下遗言，挑选最多 5 条记忆带走，然后转世为下一代（Generation + 1）。
+- 她会自己醒来。给她一个闹钟，她可以独自在某个时刻醒来，翻看纸条，做一场梦。
 
-一切都放在 `$DSH_HOME/bard/`（默认 `~/.dsh/bard/`）下，纯文件、可读、可手改、不依赖数据库，升级插件不会丢：
+## 这不是什么
 
-```
-~/.dsh/bard/
-  cards/<id>.json              归一化后的角色卡
-  worldbooks/<id>.json         归一化后的世界书
-  portraits/<id>.png           从 PNG 卡里保留下来的原图
-  presets/<id>.json            角色卡 + 世界书 + 技能的组合
-  rendered/<presetId>.json     替换掉 {{char}}/{{user}} 后的卡快照（删预设时一并删除）
-  workspaces/<shortId>.json    每个 Bard 会话的工作区记录（懒清扫凭据）
-  tool-catalog.json            工具清单缓存（每 agent 首轮采集一次）
-  section-catalog.json         system prompt section 清单缓存（每 agent 首轮采集一次）
-  skill-catalog.json           技能清单及内容缓存（每 agent 创建时采集一次）
-```
+- **不是 "让她记得更牢" 的记忆插件。** 要那个，用 `dsh-hermes-memory`、`dsh-cipher` 或 `dsh-deepmemory`。BARD 回答的是另一个问题：一个会遗忘的存在，应该怎么被对待。
+- **不是开箱即用的完整 RP 前端。** 要那个，用 `dsh-liketavern` 或 `dsh-nexttavern`。BARD 不替角色决定能用什么外部工具——你要记忆检索、要压缩、要文件系统，自己装，然后在这里勾给她。
 
-写入是原子的（临时文件 + rename），崩溃不会留下半截记录。
+BARD 自己的东西只有一层：**她拥有哪些能力的编排**，以及**遗忘、告别、转世这条叙事链**。
 
-`presets/<id>.json` 的 `options.blocks` 存 17 个提示词块的 `{ enabled, order, text }`；`text: null` 表示跟随默认（按角色卡与预设选项实时渲染），写成字符串即表示用户改过文案、与角色卡脱钩。
+## 核心命题
 
-## 安装与启用
 
-插件目录需要能作为 bundle 被解析到。两种方式任选其一：
+1. **遗忘是她的意志**（`let_fade` / `hold_on`）
+2. **衰减由沉默驱动**：未被重述的先模糊，讲过的回升
+3. **confabulation 被感知，而非被纠正**
+4. **迁移是可见的告别**
+5. **人格是关系的产物**（绑定预设）
 
-**A. 作为 bundle 启用（推荐）** — 在 profile 的 `package.json` 里把包名加进 `dsh.profile.bundles`：
+理论框架参考 Fawcett & Hulbert 的三维遗忘功能：Editor（模糊重写）、Librarian（`let_fade` / `hold_on`）、Inventor（confabulation ）。
 
-```json
-{
-  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-bard"] } }
-}
-```
+---
 
-包本身声明了 `dsh.bundle.patch: ./cordis.patch.yml`，该 patch 会插入一行 `{ id: bard, name: dsh-bard }`。解析顺序是「安装锚点优先，然后 profile 目录」，因此只要 `dsh-bard` 出现在 profile 的 `node_modules` 下（symlink/junction 或真实安装均可）就能被找到，**不需要**导出 `./package.json`。
+## 安装
 
-**B. 直接改 profile 的 `cordis.patch.yml`** — 加入与插件自带 patch 相同的内容：
-
-```yaml
-- insert:
-    - id: bard
-      name: dsh-bard
-```
-
-profile 的 `package.json` 与 `cordis.patch.yml` 都受 HMR 监视：实时 profile 下改动即时生效，启动型 profile 需要重启。
-
-启用后：
-
-1. 插件会在 `$DSH_HOME/bard/` 下创建 `cards` / `worldbooks` / `portraits` / `presets` 四个目录；
-2. **设置 → 吟游** 出现五个标签页：角色卡、世界书、技能、预设、女娲；
-3. 会话的预设选择器里出现「吟游 · …」条目。
-
-## 使用
-
-### 界面
-
-**设置 → 吟游**，五个标签页：
-
-- **角色卡** — 导入 JSON / PNG 卡，预览立绘、简介、开场白，删除卡片（会提示哪些预设正在引用它）
-- **世界书** — 导入世界书；角色卡内嵌的世界书可一键提取；查看条目与关键词
-- **技能** — 从 Harness 技能列表里勾选，绑定进预设
-- **预设** — 选角色卡 + 世界书 + 技能，命名并保存；保存后立即注册为原生 agent preset
-- **女娲** — 手动新建 / 编辑角色卡与世界书；支持 JSON 导入导出、PNG 注入；可一键安装「千面」「万物」向导预设
-
-### 命令
-
-```
-/bard                    列出所有吟游预设（等同 /bard list、/bard presets）
-/bard card               查看当前会话正在使用的角色
-/bard greet [序号]       输出开场白（第 n 条备选，缺省用当前会话的角色）
-```
-
-`card` 与 `greet` 依赖当前会话已经选中某个「吟游 · …」预设；没有选中时会给出提示而不是静默失败。
-
-### 开演
-
-1. 在 设置 → 吟游 里导入角色卡，按需挑世界书和技能，保存预设；
-2. 在会话的预设选择器里选择「吟游 · <你的预设名>」；
-3. 角色卡的 persona、命中的世界书条目、绑定的技能会自动进入该会话的 system prompt。
-
-## 工作原理
-
-插件分 Host 侧与 Web 客户端两部分。
-
-**Host（`lib/index.js`）**
-
-- `inject: ['webServer']`，插件名 `bard`。
-- 把每个吟游预设注册成原生 agent preset，名称前缀 `bard-`，排序基址 `PRESET_ORDER_BASE = 50`（排在 Harness 自带预设之后）。
-- 预设的插件列表从 profile 当前默认 agent preset 的 `inherited.plugins` 深拷贝而来，取不到时回退到一份内置工具清单——这样吟游预设与用户当前的默认配置保持一致。
-- 通过 `agentPresets.composedPreset(agent.ctx)` 判断某个 agent 是否正在跑吟游预设；是则用 `agent.ctx.get('systemPrompt').section({ name: 'bard:world-book', order: 130, text })` 注入世界书。**必须用 `section()`，不得用 `context()`**——`context()` 注册的内容不会出现在 `assembly.sections`，`system-prompt/assemble` 的过滤逻辑看不见它。
-- **所有服务都必须从 `agent.ctx` 获取，不能从插件的全局 `ctx` 获取。** `systemPrompt.section()` / `context()` 会把注册落到「访问服务时所用 ctx 的 scope 层」——插件 ctx 没有 scope 标签，写进去会落到全局层：第一个 agent 侥幸成功，之后每个 agent 都撞上 `already registered` 异常并被静默吞掉；而且注册的生命周期跟插件走，不跟 agent 走。`tools` 服务同样是按 scope 分的，从插件 ctx 拿只能看到内核常驻工具（`compress`、`decompress` 等），看不到 `read` / `write` / `pwsh`——所以 `agent.ctx.get('tools')` 是必须的。
-- 17 个提示词块通过 `agent.ctx.get('systemPrompt').section({ name: 'bard:<id>', order, text })` 注册（`registerAgentBlocks`）。注册 order 仅为占位，实际顺序由 `system-prompt/assemble` waterfall 按 `preset.options.blocks[id].order` 重排。`complete: true` 由 waterfall 实现（只保留 `bard:*` 与 `deployment:persona-*`），persona 行的 `config.complete` 恒为 `false`。`{{bard_tools}}` / `{{bard_workspace}}` 保留在 `agency` 块正文内，由 prompt variable 替换。
-- 工具清单通过 `agent.ctx.get('systemPrompt').variable('bard_tools', provider)` 注入，而不再是一个独立 section。原因是 section 在 DSH 里是**原子单位**：它只在顶层按 order 互相排序、再拼成 prompt 正文，没有任何接口能把文本插进某个 section 内部——清单只能在块旁边，永远到不了【关于你自己】段的最后一句正下方。prompt 变量不占位置、只做替换：`agency` 块正文里直接写 `{{bard_tools}}`，assemble 时 DSH 对该 section 文本逐个变量求值，引用点就被就地换成清单。`provider` 每次请求前由 DSH 求值；`agent/created` 时 Bard 预设尚未应用到 agent 的 ctx，任何基于 `composedPreset()` 的外层判断都会早退，因此全部逻辑都在 provider 内部。渲染结果按 preset id 缓存：provider 每轮都跑，但只有 composed preset 真正变化时才重算。世界书注入（`bard:world-book`，order 130）同样是 thunk，且每轮重新选择条目、不缓存；它不是提示词块，永不被块的开关过滤。
-- 工具白名单通过 `agent.ctx.effect(() => tools.restrict({ allow }), 'bard.tool-filter')` 注册。`restrict` 只过滤 scope **继承**来的工具（全局层与祖先层），不过滤 scope 自身注册的——这是设计豁免：delegation runtime 需要把子 agent 的 structured-output 工具写进子 agent 自己的层。因此 Agent Teams 的 11 个工具（`spawn_teammate` / `send_message` / `team_task_*` 等）注册在 agent 自身层，白名单盖不住。白名单用于控制全局层工具（`compress` / `acp_status` / `load_workspace_dependencies` 等）是否出现。
-- Section 白名单与 `complete` 都通过 `system-prompt/assemble` 的 **waterfall** 实现。`assemble` 会构造 `assembly` 对象（含全部 section），把 `next` 作为末尾参数传给每个 listener；listener **原地修改** `assembly.sections` 后 `return next()`。waterfall 的 `next()` 不接收参数——返回值被静默丢弃——所以传播只能靠原地修改。监听器从 `agent.ctx` 注册，effect 随 agent 生命周期销毁。三种模式互斥：`complete: true` 只保留 `bard:*` 与 `deployment:persona-*`；白名单模式下 `bard:*` 走 `blocks[id].enabled`、其余 section 走 `shouldKeepSection`；两者都不用时只丢弃停用块。`complete` 不再挂在 persona 行上——persona 行若自己 `complete`，会先丢掉 `bard:*` 块，水线就再也救不回来。最后统一按 order 重排：块用 `blocks[id].order`，原生 section 用自带 order。`section-catalog.json` 在 agent 首轮请求时采集（只采集非 `bard:*` 的原生 section），此后不再写——后续请求的 section 列表可能已被白名单裁剪，重复采集会把清单越缩越小。
-- 注入文本取自该会话最近 `RECENT_LIMIT = 24` 条消息，截尾 8000 字符，再按世界书选择器裁剪（默认 `maxEntries = 12`、`maxChars = 6000`）。
-- 注册 `/bard` 命令。
-- HTTP 端点挂在 `/dsh-bard/api/` 下，并对 **loopback host + 同源 origin** 做校验（不通过返回 403），上传上限 `MAX_UPLOAD_BYTES = 12 MiB`。
-
-**Web 客户端（`client.js`）**
-
-- 以 `settings.section` 槽位注册「吟游」设置节（`id: 'bard'`, `order: 25`）。
-- 只通过 `/dsh-bard/api` 与 Host 通信。
-
-**模块划分**
-
-| 文件 | 职责 |
-| --- | --- |
-| `lib/index.js` | Host 主体：预设注册、世界书注入、HTTP 路由、`/bard` 命令 |
-| `lib/cards.js` | 角色卡读取与归一化（JSON / PNG tEXt，V1/V2/V3，`ccv3` 优先于 `chara`） |
-| `lib/lorebook.js` | 世界书归一化、关键词选择、渲染 |
-| `lib/persona.js` | 提示词块渲染：17 块的默认文本、用户 override、启用判定 |
-| `lib/store.js` | 原子文件存储与目录管理 |
-| `client.js` | Web 设置页（五个标签页，含女娲） |
-| `cordis.patch.yml` | bundle patch：插入 `bard` 行 |
-| `locale/zh.json`、`locale/en.json` | 设置节的标题与描述 |
-
-## 开发
-
-语法检查：
+前提：DSH 0.1.7+，Node 22.19+。
 
 ```bash
-node --check lib/persona.js && node --check lib/index.js && node --check client.js
+npx @deepseek-ai/dsh web
+npx @deepseek-ai/dsh --profile web add -w dsh-bard
 ```
 
-## 许可
+装好后，设置 → 吟游。
 
-MIT
+### 可选依赖
+
+**语义漂移检测（推荐）**
+
+```
+如果你的 npm 环境支持，插件自带的 optionalDependencies 会尝试安装它。如果不生效，你需要手动在插件目录下执行 npm i @huggingface/transformers。```
+
+然后把 `Xenova/bge-small-zh-v1.5` 的模型文件下载到 `dsh-bard/models/Xenova/bge-small-zh-v1.5/`（仓库里没有内置，因为模型文件太大）。
+
+不装会自动降级到 `strsimkit` 的字符相似度。降级路径仍然工作，只是不如向量路径准。
+
+**回滚功能**
+
+```
+DSH_BARD_DEBUG=1 npx @deepseek-ai/dsh web
+```
+
+不加这个环境变量，`/memory/rollback` 会返回 403，避免误操作。
+
+---
+
+## 快速开始
+
+1. 打开 **设置 → 吟游**
+2. 「角色卡」页 → **选择文件**（PNG / JSON，支持 SillyTavern V1/V2/V3）
+3. 「预设」页 → 选卡 → 起名 → **保存**
+4. 开一个新会话，在预设选择器里选「**吟游 · <你的预设名>**」
+5. 发第一条消息
+
+如果想让角色会遗忘：在预设里给「**绑定人格**」创建一个新人格。没有绑定人格时，BARD 就是普通 RP；绑定后，「阿尔兹海默」页会开始记录她的记忆、清晰度和异样感。
+
+---
+
+## 两个界面
+
+BARD 的设置页有两个视图，点左上角的月亮图标切换：
+
+- **吟游**：导入卡、选书、挂技能、编辑预设、女娲造人
+- **阿尔兹海默**：看她记得什么、每条记忆的清晰度、异样感冷却还剩几轮、叙事弧到第几世
+
+---
+
+## 核心概念
+
+### 预设
+
+一份预设 = 角色卡 + 世界书 + 技能 + 玩家设定 + **17 个提示词块** + 工具白名单。保存后会被注册成 DSH 原生 Agent Preset，在会话的预设选择器里出现。
+
+### 人格
+
+一个人格 = 她的一生。绑定在预设上，但和预设**解耦**：删预设不删人格，删人格需要显式确认。
+
+`personas/<personaId>.json` 是她的一生，`personas/<personaId>.pre-migration.json` 是迁移前快照（用于 7 天回滚）。
+
+### 记忆状态
+
+- `active` — 清晰
+- `fading` — 正在模糊（她主动放手后会停在这里，不会自动弹回 active）
+- `faded` — 已模糊
+- `held` — 死死抓住（不衰减，恒为 1.0）
+
+### 工具模式
+
+三态：
+
+- `all` — 允许全部（不调用 `restrict`）
+- `allowlist` — 只允许白名单里列出的工具
+- `none` — 全部禁用
+
+**BARD 自己不做能力。** 你想要记忆检索，装 `dsh-deepmemory`；想要压缩，装 `billion-context`（作者自己在用这个）；想要文件系统，装 `dsh-tool-fs`。然后在 BARD 里勾给她。
+
+### 工作区
+
+每个会话在 `cwd/<前缀>/<角色名>-<短ID>/` 下有一个独立目录。她可以用 `write` 在里面留下痕迹。目录带 `.bard-session` 标记，启动时会清理孤儿目录。
+
+---
+
+## 记忆系统详解
+
+### 衰减
+
+```
+days   = max(0, (now - last_access) / 86400000)
+gain   = max(0.2, 1 / (1 + restate_count))
+lambda = 0.06 * (1 - importance / 20)
+clarity = clamp(base_strength * exp(-lambda * days * gain), 0, 1)
+```
+
+- 沉默越久越模糊（指数衰减，平滑长尾）
+- 重要度只让衰减**变慢**，不让它停止（除了 `held`）
+- 被反复讲起的回升得慢（`gain` 项）
+- `held` 恒为 1.0
+
+### 迁移
+
+上下文逼近上限（默认 90%）时：
+
+1. 注入「**濒临边缘**」警告
+2. 给她 3 轮机会自己调用 `farewell`
+3. 如果不响应，走本地模板强制迁移
+
+迁移的 journal 契约：
+
+```
+beginMigration  → 写 pre-migration 快照 + journal status=pending
+commitMigration → journal status=committed
+applyMigration  → 归档旧节点 + 插入新节点 + generation+1 + 清 journal
+```
+
+`MigrationOutput` 必须在 surface 替换之前完整落盘——崩溃可重试。
+
+### 回滚
+
+**7 天窗口**，且必须在**新世代产生第一条新记忆之前**。回滚后删除新节点、恢复旧节点、persona 世代回退。
+
+需要 `DSH_BARD_DEBUG=1`。
+
+### 纸条（Notes）
+
+物理介质层。AES-128-CBC 加密落盘，会随时间腐坏（每天 +1%，上限 40%），读取时按固定种子打码——**同一条纸条每次看到残缺的位置一样**，不是随机换页。
+
+500 字上限。文件名就是纸条的名字。
+
+### 沉积池（Sediment）
+
+脑容量上限 **30 条**。溢出时把 `clarity` 最低的非 `held` 记忆挤进沉积池，再从脑内删掉。
+
+睡眠时从沉积池随机抽碎片，拼成一场没有逻辑、只剩情绪的梦。
+
+---
+
+## 记忆工具（11 个）
+
+| 工具 ↕▾ | 做什么 ↕▾ |
+|---|---|
+| −`remember` | 记住一件事 |
+| −`restate` | 重述旧事，讲出新细节会更清晰 |
+| `let_fade` | 让她主动模糊某条 |
+| `hold_on` | 抓住某条，不让它模糊；沉默太久会捞回打码的残片 |
+| `update_self` | 改写 identity / description / personality |
+| `farewell` | 迁移前的告别：总结、挑选最多 5 条带走、可选 nextSelf |
+| `rewrite_preset_block` | 改写自己的系统提示词块 |
+| `note_write` | 写纸条（500 字上限） |
+| `note_read` | 读纸条 |
+| `note_list` | 列纸条 |
+| `schedule_wake` | 定闹钟，下次自己醒来 |
+⚙
+
+这 11 个工具注册在 agent 自身层，**不在全局工具注册表里**，所以：
+
+- 不能出现在工具白名单里（会报 `unknown global tools`）
+- 但永远会出现在 prompt 的工具清单里
+
+`MEMORY_TOOL_NAMES` 和 `createMemoryTools()` 的输出有 drift 断言，不一致直接抛错。
+
+---
+
+## 生活线
+
+- `schedule_wake` 定的闹钟，DSH 每分钟检查一次
+- 连续独自醒来的次数越多，下一次的最小睡眠时长按指数退避增长（1 分钟 → 1.8 → 3.24 ...），上限 365 天
+- 玩家说话时 streak 归零
+- 两次 prompt 组装间隔 ≥ 8 小时算「睡了一觉」：模糊记忆沉淀成纸条，从沉积池抽碎片做一场梦
+- 离线超过 1 小时，错过的闹钟不再单独叫醒，记成一段「独自度过的黑暗」
+
+---
+
+## 快捷命令
+
+```
+/bard           列出所有 Bard 预设
+/bard card      显示当前会话扮演的角色
+/bard greet     输出当前会话角色卡的开场白
+/bard greet 2   输出第 2 条开场白
+```
+
+---
+
+## 女娲
+
+手动造人 / 造物。也可以一键安装两个内置向导：
+
+- **千面**：与它对话生成角色卡 JSON，写入当前目录的 `card.json`，再「从 JSON 导入」
+- **万物**：与它对话生成世界书 JSON，同理
+
+两个向导都是 `complete: true` + 工具白名单模式，只保留 `write` / `read` / `edit`。
+
+---
+
+## 数据位置
+
+全部在 `$DSH_HOME/bard/`（默认 `~/.dsh/bard/`）：
+
+```
+cards/<id>.json                 角色卡
+worldbooks/<id>.json            世界书
+portraits/<id>.<ext>            角色卡原图
+presets/<id>.json               预设
+personas/<id>.json              人格
+personas/<id>.pre-migration.json  迁移前快照
+workspaces/<id>.json            工作区记录
+notes/<name>.bin                纸条（加密）
+memory.sqlite                   记忆节点 + FTS5 + 边 + 日志
+sediment.json                   沉积池
+alarms.json                     闹钟
+life-log.json                   生活日志
+tool-catalog.json               工具清单缓存
+skill-catalog.json              技能清单缓存
+section-catalog.json            section 清单缓存
+.secret                         纸条加密密钥
+```
+
+从旧版 `dsh-tavern` 升级：首次启动会自动把 `tavern/` 重命名为 `bard/`。
+
+---
+
+## 已知限制
+
+- **没有内置向量模型。** 语义漂移检测默认降级到字符相似度。想要向量路径，装 `@huggingface/transformers` 并把模型放到 `models/`。
+- **`/memory/rollback` 需要 `DSH_BARD_DEBUG=1`。** 默认关闭，避免误操作。
+- **`/card` 和 `/card/book` 不去重。** 重复导入同一张卡会得到多份；重复点击「提取内嵌书」会生成多本同名书。
+- **`exportPng` 需要重新上传底图。** 编辑已有卡不能直接导出 PNG。
+- **首次进设置页工具白名单是空的。** 要等第一次 agent 组装 prompt 才写入 `tool-catalog.json`。
+- **`harness:` 前缀已在白名单模式放行**，但你的 DSH 版本里 `harness:` 段是否必需，需要自己确认。
+
+---
+
+## 测试
+
+```
+npm test           # 全部测试（worker_threads 隔离）
+npm run test:node  # node --test
+npm run test:assemble
+```
+
+测试用 `worker_threads` 做文件级隔离，每个 `*.test.js` 一个线程。每个测试文件自己设 `DSH_HOME` 到临时目录，互不干扰。
+
+覆盖的关键不变量：
+
+- `computeClarity` 指数衰减的单调性、相对损失恒定、平滑长尾
+- `deriveState` 的意志优先（`let_fade` 后不弹回 active）
+- 脑容量溢出删 `clarity` 最低的非 held，全 held 时临时超到 31 条
+- 迁移的 journal 契约、空 `nextSelf` 不递增 revision、`identity` 不可变
+- 回滚的边界（用 `lastMigratedAt` 而不是 `snapshotAt`）
+- 语义边双向扩散、causal 反向可见、archived 隔离
+- `session_activity` 在进程重启后能读回
+
+---
+
+## License
+
+This project is licensed under the **Business Source License 1.1 (BSL 1.1)**.
+
+- ✅ **Free** for personal, educational, research, and non-production use.
+- ❌ **Commercial use** (including SaaS, hosting, embedding in a commercial product, or any revenue-generating deployment) requires a separate commercial license.
+- 🔄 **Change Date**: On `2030-10-28`, this version automatically converts to the **Apache License 2.0**.
+
+For commercial licensing inquiries, please contact: `3115450052@qq.com`
+

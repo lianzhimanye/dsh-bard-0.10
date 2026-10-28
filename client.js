@@ -43,6 +43,15 @@ window.__ModuleLoader__.load({
       })
     }
 
+    /** 角色卡详情 → 开场白列表。Cards 页与预设页共用，避免两份解析逻辑漂移。 */
+    function getGreetingsFromDetail(detail) {
+      if (!detail) return []
+      const out = []
+      if (detail.firstMes) out.push({ label: '开场白', text: detail.firstMes })
+      ;(detail.alternateGreetings || []).forEach((text, index) => out.push({ label: `备用 ${index + 1}`, text }))
+      return out
+    }
+
     // -----------------------------------------------------------------------
     // PNG Tools (纯前端注入与解析)
     // -----------------------------------------------------------------------
@@ -121,41 +130,134 @@ window.__ModuleLoader__.load({
     const AutoResizeTextarea = React.forwardRef((props, ref) => {
       const innerRef = useRef(null)
       const elRef = ref || innerRef
-      useEffect(() => {
+      const isComposing = useRef(false)
+
+      const resize = () => {
         const el = elRef.current
         if (el) {
           el.style.height = 'auto'
           el.style.height = el.scrollHeight + 'px'
         }
+      }
+
+      useEffect(() => {
+        if (!isComposing.current) {
+          resize()
+        }
       }, [props.value, elRef])
+
       return h('textarea', {
         ...props,
         ref: elRef,
+        onCompositionStart: (e) => {
+          isComposing.current = true
+          if (props.onCompositionStart) props.onCompositionStart(e)
+        },
+        onCompositionEnd: (e) => {
+          isComposing.current = false
+          resize()
+          if (props.onCompositionEnd) props.onCompositionEnd(e)
+        },
         style: { ...props.style, resize: 'none', overflow: 'hidden', minHeight: props.style?.minHeight || '40px' }
       })
     })
 
     // -----------------------------------------------------------------------
-    // UI Layout
+    // UI Layout & Theme
     // -----------------------------------------------------------------------
 
     const STYLE_ID = 'dsh-bard-ui-style'
 
     const INJECTED_CSS = `
-.dsh-bard-scope .dsh-bard-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit;font-size:13px;line-height:1.4;white-space:nowrap;transition:border-color .15s,background-color .15s,color .15s,opacity .15s}
-.dsh-bard-scope .dsh-bard-btn:disabled{opacity:.45;cursor:not-allowed}
-.dsh-bard-scope .dsh-bard-btn:not(:disabled):hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}
-.dsh-bard-scope .dsh-bard-btn-primary{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary);color:#fff;font-weight:600;padding:6px 16px}
-.dsh-bard-scope .dsh-bard-btn-primary:not(:disabled):hover{color:#fff;filter:brightness(1.06)}
+/* ---- 基础控件现代化 ---- */
+.dsh-bard-scope .dsh-bard-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit;font-size:13px;line-height:1.4;white-space:nowrap;transition:all .2s ease;box-shadow:0 1px 2px rgba(0,0,0,0.02)}
+.dsh-bard-scope .dsh-bard-btn:active{transform:scale(0.97)}
+.dsh-bard-scope .dsh-bard-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.dsh-bard-scope .dsh-bard-btn:not(:disabled):hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary);box-shadow:0 2px 6px rgba(0,0,0,0.05)}
+.dsh-bard-scope .dsh-bard-btn-primary{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary);color:#fff;font-weight:500;padding:6px 16px}
+.dsh-bard-scope .dsh-bard-btn-primary:not(:disabled):hover{color:#fff;filter:brightness(1.08);box-shadow:0 4px 12px rgba(var(--dsw-alias-brand-primary-rgb, 77, 107, 254), 0.3)}
 .dsh-bard-scope .dsh-bard-btn-danger{border-color:var(--dsw-alias-state-error-primary);background:transparent;color:var(--dsw-alias-state-error-primary)}
-.dsh-bard-scope .dsh-bard-btn-danger:not(:disabled):hover{background:rgba(220,38,38,.08)}
-.dsh-bard-scope .dsh-bard-btn-icon{padding:4px 6px;font-size:11px;min-width:26px}
-.dsh-bard-scope .dsh-bard-tab{border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary);border-radius:8px;padding:6px 14px;cursor:pointer;font-family:inherit;font-size:13px;transition:all .15s}
-.dsh-bard-scope .dsh-bard-tab-active{border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-weight:600}
-.dsh-bard-scope .dsh-bard-chip{border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:12px}
+.dsh-bard-scope .dsh-bard-btn-danger:not(:disabled):hover{background:rgba(220,38,38,.08);box-shadow:none}
+.dsh-bard-scope .dsh-bard-btn-icon{padding:4px 8px;font-size:12px;min-width:28px}
+
+/* ---- 输入框与下拉框 Focus 状态 ---- */
+.dsh-bard-scope input:not([type="checkbox"]):not([type="radio"]),.dsh-bard-scope select,.dsh-bard-scope textarea{transition:border-color .2s, box-shadow .2s, background-color .2s}
+.dsh-bard-scope input:not([type="checkbox"]):not([type="radio"]):focus,.dsh-bard-scope select:focus,.dsh-bard-scope textarea:focus{outline:none;border-color:var(--dsw-alias-brand-primary);box-shadow:0 0 0 3px rgba(var(--dsw-alias-brand-primary-rgb, 77, 107, 254), 0.15);background:var(--dsw-alias-bg-base)}
+
+/* ---- Tabs 下划线重写 ---- */
+.dsh-bard-scope .dsh-bard-tabs-wrap{display:flex;gap:24px;border-bottom:1px solid var(--dsw-alias-border-l1);margin-bottom:24px;overflow-x:auto;scrollbar-width:none}
+.dsh-bard-scope .dsh-bard-tabs-wrap::-webkit-scrollbar{display:none}
+.dsh-bard-scope .dsh-bard-tab{border:none;background:transparent;color:var(--dsw-alias-label-secondary);padding:10px 2px;cursor:pointer;font-family:inherit;font-size:14px;transition:color .2s;position:relative;white-space:nowrap;font-weight:500}
+.dsh-bard-scope .dsh-bard-tab::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:transparent;transition:background .2s;border-radius:2px 2px 0 0}
+.dsh-bard-scope .dsh-bard-tab:hover{color:var(--dsw-alias-label-primary)}
+.dsh-bard-scope .dsh-bard-tab-active{color:var(--dsw-alias-brand-primary)}
+.dsh-bard-scope .dsh-bard-tab-active::after{background:var(--dsw-alias-brand-primary)}
+
+/* ---- 开场白切换 chip ---- */
+.dsh-bard-scope .dsh-bard-chip{border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary);border-radius:6px;padding:4px 12px;cursor:pointer;font-family:inherit;font-size:12px;transition:all .2s}
+.dsh-bard-scope .dsh-bard-chip:not(.dsh-bard-chip-active):hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2)}
 .dsh-bard-scope .dsh-bard-chip-active{border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-weight:600}
-.dsh-bard-scope .dsh-bard-clickable:hover{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
+
+/* ---- 卡片与列表项 ---- */
+.dsh-bard-scope .dsh-bard-card{transition:box-shadow .2s, border-color .2s, background-color .3s;box-shadow:0 1px 3px rgba(0,0,0,0.03),0 1px 2px rgba(0,0,0,0.02)}
+.dsh-bard-scope .dsh-bard-card:hover{box-shadow:0 4px 12px rgba(0,0,0,0.05),0 1px 2px rgba(0,0,0,0.03)}
+.dsh-bard-scope .dsh-bard-clickable:hover{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:-1px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}
 .dsh-bard-scope .dsh-bard-section-head:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+
+/* ---- 月亮图标动画 ---- */
+.dsh-bard-scope .dsh-bard-moon-icon{transition:transform .4s cubic-bezier(0.4,0,0.2,1),filter .3s}
+/* 移除原本的旋转，改为发光和呼吸感 */
+.dsh-bard-scope .dsh-bard-clickable-title:hover .dsh-bard-moon-icon {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 12px rgba(251, 191, 36, 0.4));
+}
+.dsh-bard-dark .dsh-bard-clickable-title:hover .dsh-bard-moon-icon {
+  filter: drop-shadow(0 0 12px rgba(228, 228, 231, 0.3));
+}
+
+/* ---- 暗面主题覆盖 ---- */
+.dsh-bard-dark {
+  --dsw-alias-bg-base: #0a0a0c;
+  --dsw-alias-bg-layer-1: #121216;
+  --dsw-alias-bg-layer-2: #1c1c22;
+  --dsw-alias-label-primary: #d4d4d8;
+  --dsw-alias-label-secondary: #8b8b93;
+  --dsw-alias-border-l1: #27272e;
+  --dsw-alias-border-l2: #3a3a44;
+  --dsw-alias-brand-primary: #c9a84c;
+}
+.dsh-bard-dark .dsh-bard-btn-primary {
+  background: var(--dsw-alias-brand-primary);
+  color: #0a0a0c;
+}
+.dsh-bard-dark .dsh-bard-btn-primary:not(:disabled):hover {
+  color: #0a0a0c;
+  filter: brightness(1.12);
+}
+.dsh-bard-dark .dsh-bard-section-head {
+  background: #1a1a20;
+}
+.dsh-bard-dark .dsh-bard-card {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.dsh-bard-dark .dsh-bard-btn:not(.dsh-bard-btn-primary) {
+  background: var(--dsw-alias-bg-layer-2);
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 主题平滑过渡 */
+.dsh-bard-scope {
+  transition: background-color 0.6s ease, color 0.6s ease;
+}
+.dsh-bard-scope .dsh-bard-card,
+.dsh-bard-scope input,
+.dsh-bard-scope select,
+.dsh-bard-scope textarea,
+.dsh-bard-scope .dsh-bard-section-head,
+.dsh-bard-scope .dsh-bard-btn {
+  transition: background-color 0.6s ease, color 0.6s ease, border-color 0.6s ease, box-shadow 0.6s ease;
+}
 `
 
     function ensureStyles() {
@@ -172,18 +274,17 @@ window.__ModuleLoader__.load({
     const CARD_RADIUS = 12
 
     const S = {
-      page: { display: 'flex', flexDirection: 'column', gap: '20px', color: 'var(--dsw-alias-label-primary)', fontSize: '13px', lineHeight: 1.6, maxWidth: '1200px', margin: '0 auto' },
-      card: { border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-1)', borderRadius: `${CARD_RADIUS}px`, padding: `${CARD_PAD}px`, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' },
+      page: { display: 'flex', flexDirection: 'column', gap: '20px', color: 'var(--dsw-alias-label-primary)', fontSize: '13px', lineHeight: 1.6, maxWidth: '1000px', margin: '0 auto', padding: '32px 16px 40px', minHeight: '80vh' },
+      card: { border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-1)', borderRadius: `${CARD_RADIUS}px`, padding: `${CARD_PAD}px`, marginBottom: '16px' },
       row: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' },
       between: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' },
-      muted: { color: 'var(--dsw-alias-label-secondary)', fontSize: '12px' },
-      tabs: { display: 'flex', gap: '6px', borderBottom: '1px solid var(--dsw-alias-border-l1)', paddingBottom: '8px', flexWrap: 'wrap', marginBottom: '16px' },
-      input: { border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)', borderRadius: '8px', padding: '6px 10px', fontFamily: 'inherit', fontSize: '13px', width: '100%', boxSizing: 'border-box', transition: 'border-color 0.2s' },
+      muted: { color: 'var(--dsw-alias-label-secondary)', fontSize: '12px', transition: 'color 0.3s' },
+      input: { border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)', borderRadius: '8px', padding: '6px 10px', fontFamily: 'inherit', fontSize: '13px', width: '100%', boxSizing: 'border-box', transition: 'border-color 0.2s, background-color 0.3s' },
       select: { border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', borderRadius: '8px', padding: '6px 10px', fontFamily: 'inherit', fontSize: '13px', width: '100%', boxSizing: 'border-box', cursor: 'pointer' },
       label: { fontSize: '12px', fontWeight: 500, color: 'var(--dsw-alias-label-primary)', display: 'block', marginBottom: '6px' },
       list: { display: 'flex', flexDirection: 'column', gap: '10px' },
       item: { display: 'flex', gap: '12px', alignItems: 'flex-start', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-1)', borderRadius: '10px', padding: '12px', transition: 'border-color 0.2s' },
-      itemClickable: { display: 'flex', gap: '12px', alignItems: 'flex-start', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-1)', borderRadius: '10px', padding: '12px', cursor: 'pointer', transition: 'border-color 0.2s' },
+      itemClickable: { display: 'flex', gap: '14px', alignItems: 'center', border: '1px solid var(--dsw-alias-border-l1)', background: 'var(--dsw-alias-bg-layer-1)', borderRadius: '10px', padding: '16px', cursor: 'pointer', transition: 'all 0.2s' },
       stickyBar: { position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--dsw-alias-bg-layer-1)', margin: `${-CARD_PAD}px ${-CARD_PAD}px 0`, padding: '12px 16px', borderBottom: '1px solid var(--dsw-alias-border-l1)', cursor: 'pointer', borderRadius: `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0` },
       stickyFooter: { position: 'sticky', bottom: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--dsw-alias-bg-layer-1)', margin: `0 ${-CARD_PAD}px ${-CARD_PAD}px`, padding: '12px 16px', borderTop: '1px solid var(--dsw-alias-border-l1)', borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px` },
       thumb: { width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flex: '0 0 auto', background: 'var(--dsw-alias-bg-layer-2)' },
@@ -240,8 +341,13 @@ window.__ModuleLoader__.load({
     }
 
     function Section(props) {
-      const [open, setOpen] = useState(props.defaultOpen !== false)
-      const toggle = () => setOpen((value) => !value)
+      const [openState, setOpenState] = useState(props.defaultOpen !== false)
+      const controlled = props.open !== undefined
+      const open = controlled ? props.open : openState
+      const toggle = () => {
+        if (controlled) { if (typeof props.onToggle === 'function') props.onToggle(!open); return }
+        setOpenState(!open)
+      }
       return h('div', { style: S.section }, [
         h('div', { key: 'h', className: 'dsh-bard-section-head', style: S.sectionHeader, role: 'button', tabIndex: 0, onClick: toggle, onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle() } } }, [
           h('span', { key: 't' }, props.title),
@@ -317,7 +423,7 @@ window.__ModuleLoader__.load({
         h(AutoResizeTextarea, { key: 'i', style: { ...S.input, minHeight: '52px' }, value: draft[key], placeholder: hint || '', onChange: (e) => set({ [key]: e.target.value }) }),
       ])
 
-      return h('div', { style: S.card }, [
+      return h('div', { className: 'dsh-bard-card', style: S.card }, [
         h('div', { key: 'h', style: S.between }, [
           h('span', { key: 't', style: { ...S.name, fontSize: '16px' } }, `编辑角色卡「${detail.name}」`),
           h('span', { key: 'id', style: { ...S.muted, fontFamily: 'monospace' } }, `ID：${detail.id}`),
@@ -335,7 +441,7 @@ window.__ModuleLoader__.load({
         textField('mesExample', '对话示例', '让模型模仿其风格，不会照抄。'),
         textField('systemPrompt', '角色专属系统指令', '会被写进 persona prefix，与预设的默认行为叠加。'),
 
-        h(Section, { key: 'ag', title: `备用开场白（${draft.alternateGreetings.length}）` }, [
+        h(Section, { key: 'ag', title: `备用开场白（${draft.alternateGreetings.length}）`, defaultOpen: false }, [
           draft.alternateGreetings.map((text, index) => h('div', { key: index, style: { marginBottom: '10px' } }, [
             h('div', { key: 'bar', style: S.between }, [
               h('span', { key: 'l', style: S.label }, `备用 ${index + 1}`),
@@ -421,10 +527,7 @@ window.__ModuleLoader__.load({
       const renderDetail = (card) => {
         const detail = cardDetails[card.id] || null
         if (detail === null) return h('div', { key: 'loading', style: { ...S.muted, marginTop: '12px' } }, '正在加载详情…')
-        const greetings = [
-          detail.firstMes ? { label: '开场白', text: detail.firstMes } : null,
-          ...(detail.alternateGreetings || []).map((text, i) => ({ label: `备用 ${i + 1}`, text })),
-        ].filter(Boolean)
+        const greetings = getGreetingsFromDetail(detail)
         const tags = Array.isArray(card.tags) ? card.tags : (Array.isArray(detail.tags) ? detail.tags : [])
         return h('div', { key: 'body', style: { marginTop: '12px' } }, [
           h('div', { key: 'head', style: { display: 'flex', gap: '16px', alignItems: 'flex-start', marginBottom: '20px' } }, [
@@ -445,7 +548,7 @@ window.__ModuleLoader__.load({
       }
 
       return h('div', { style: S.list }, [
-        h('div', { key: 'imp', style: S.card }, [
+        h('div', { key: 'imp', className: 'dsh-bard-card', style: S.card }, [
           h('div', { key: 'a', style: S.between }, [
             h('span', { key: 't', style: { ...S.name, fontSize: '15px' } }, '导入角色卡'),
             h(Btn, { key: 'b', variant: 'primary', disabled: busy, onClick: () => fileRef.current && fileRef.current.click() }, busy ? '处理中…' : '选择文件'),
@@ -471,7 +574,7 @@ window.__ModuleLoader__.load({
                 ]),
               ]),
             ]),
-            isOpen ? h('div', { key: 'detail', style: { ...S.card, marginTop: '8px' } }, [
+            isOpen ? h('div', { key: 'detail', className: 'dsh-bard-card', style: { ...S.card, marginTop: '8px' } }, [
               h('div', { key: 'bar', style: S.stickyBar, ...rowClickProps(() => setOpenId('')) }, [h(Icon, { key: 'a', name: 'chevronDown', size: 11, style: { color: 'var(--dsw-alias-label-secondary)' } }), card.portrait ? h('img', { key: 'p', src: card.portrait, style: { width: '24px', height: '24px', borderRadius: '5px', objectFit: 'cover', flex: '0 0 auto' }, alt: '' }) : null, h('span', { key: 'n', style: { ...S.name, ...S.ellipsis } }, card.name), h(Btn, { key: 'e', disabled: busy, onClick: (e) => { e.stopPropagation(); startEdit(card) } }, '编辑')]),
               renderDetail(card),
             ]) : null,
@@ -527,7 +630,7 @@ window.__ModuleLoader__.load({
       const toggleEntry = (id) => setOpenEntries(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
       return h('div', { style: S.list }, [
-        h('div', { key: 'imp', style: S.card }, [
+        h('div', { key: 'imp', className: 'dsh-bard-card', style: S.card }, [
           h('div', { key: 'a', style: S.between }, [h('span', { key: 't', style: { ...S.name, fontSize: '15px' } }, '导入世界书'), h(Btn, { key: 'b', variant: 'primary', disabled: busy, onClick: () => fileRef.current && fileRef.current.click() }, busy ? '处理中…' : '选择文件')]),
           h('div', { key: 'b', style: { ...S.muted, marginTop: '6px' } }, '支持 SillyTavern World Info 导出（entries 为对象或数组）与 Character Card V2 的 character_book。'),
           h('input', { key: 'f', ref: fileRef, type: 'file', multiple: true, style: { display: 'none' }, accept: '.json,application/json', onChange: onFiles }),
@@ -545,7 +648,7 @@ window.__ModuleLoader__.load({
                 h('div', { key: 'b', style: { ...S.row, marginTop: '8px' } }, [h(Btn, { key: 'x', variant: 'danger', disabled: busy, onClick: (e) => { e.stopPropagation(); remove(book) } }, '删除')]),
               ]),
             ]),
-            isOpen ? h('div', { key: 'detail', style: { ...S.card, marginTop: '8px' } }, [
+            isOpen ? h('div', { key: 'detail', className: 'dsh-bard-card', style: { ...S.card, marginTop: '8px' } }, [
               h('div', { key: 'bar', style: S.stickyBar, ...rowClickProps(() => open(book)) }, [h(Icon, { key: 'a', name: 'chevronDown', size: 11, style: { color: 'var(--dsw-alias-label-secondary)' } }), h('span', { key: 'n', style: { ...S.name, ...S.ellipsis } }, `${detail.name} — 条目（${entries.length}）`)]),
               entries.length === 0 ? h('div', { key: 'e', style: { ...S.muted, marginTop: '12px' } }, '这本书里没有可用条目。')
                 : h('div', { key: 'list', style: { marginTop: '4px' } }, entries.map((entry) => {
@@ -568,7 +671,7 @@ window.__ModuleLoader__.load({
       const [manual, setManual] = useState(null)
       const expanded = manual !== null ? manual : skills.length <= 8
       return h('div', { style: S.list }, [
-        h('div', { key: 'h', style: S.card }, [
+        h('div', { key: 'h', className: 'dsh-bard-card', style: S.card }, [
           h('div', { key: 'a', style: S.between }, [h('div', { key: 't', style: { ...S.name, fontSize: '15px' } }, `DSH 技能目录（${skills.length}）`), skills.length > 0 ? h(Btn, { key: 'b', onClick: () => setManual(!expanded) }, expanded ? '收起' : `展开全部 ${skills.length} 个`) : null]),
           h('div', { key: 's', style: { ...S.muted, marginTop: '6px' } }, '这些是本机 DSH 已安装的 Skill。在「预设」页把技能挂到某个角色上，它的内容会被写进角色的系统提示，让角色按需使用。'),
         ]),
@@ -586,6 +689,7 @@ window.__ModuleLoader__.load({
       const { state, reload, notify, cardDetails, ensureCardDetail, initialBook } = props
       const [mode, setMode] = useState('card') // card | book
       const [editingId, setEditingId] = useState('')
+      const [openSection, setOpenSection] = useState('s1') // 手风琴：同时只展开一个
       
       // 角色卡草稿
       const emptyCard = { name: '', description: '', personality: '', scenario: '', firstMes: '', mesExample: '', systemPrompt: '', postHistoryInstructions: '', depthPrompt: '', creatorNotes: '', creator: '', characterVersion: '1.0', tags: '', alternateGreetings: [], portraitBase64: '' }
@@ -597,17 +701,16 @@ window.__ModuleLoader__.load({
       const [editingEntryIndex, setEditingEntryIndex] = useState(-1)
       
       const fileRef = useRef(null)
+      const jsonFileRef = useRef(null)
       const [busy, setBusy] = useState(false)
-            const importJson = () => {
-        const raw = window.prompt(mode === 'card' ? '请粘贴角色卡 JSON：' : '请粘贴世界书 JSON：')
+
+      const applyJsonText = (raw) => {
         if (!raw || !raw.trim()) return
         try {
-          // 容错：剥离可能出现的 markdown 代码块标记
           const cleanStr = raw.replace(/^```(json)?\n?/i, '').replace(/\n?```$/i, '').trim()
           const data = JSON.parse(cleanStr)
           
           if (mode === 'card') {
-            // 如果是最外层有 data 的 V2/V3 格式，剥开它
             const inner = data.data || data
             setCardDraft(prev => ({
               ...prev,
@@ -647,7 +750,18 @@ window.__ModuleLoader__.load({
         }
       }
 
-      // 处理从外部跳转过来的提取请求
+      const onJsonFile = async (event) => {
+        const file = event.target.files?.[0]
+        event.target.value = '' // 允许重复选择同一文件
+        if (!file) return
+        try {
+          const text = await file.text()
+          applyJsonText(text)
+        } catch (e) {
+          notify(`读取文件失败：${e.message}`, 'error')
+        }
+      }
+
       useEffect(() => {
         if (initialBook) {
           setMode('book')
@@ -657,7 +771,6 @@ window.__ModuleLoader__.load({
         }
       }, [initialBook])
 
-      // 载入现有卡或书
       const loadCard = async (id) => {
         setBusy(true)
         try {
@@ -714,10 +827,11 @@ window.__ModuleLoader__.load({
       const exportJson = () => {
         let data = mode === 'card' ? cardDraft : bookDraft
         if (mode === 'card') {
-          data = { 
-            spec: cardDraft.spec || 'chara_card_v2', 
-            spec_version: cardDraft.specVersion || '2.0', 
-            data: { ...data, tags: data.tags.split(',').map(s => s.trim()).filter(Boolean) } 
+          const { portraitBase64, portrait, ...cleanDraft } = cardDraft
+          data = {
+            spec: cardDraft.spec || 'chara_card_v2',
+            spec_version: cardDraft.specVersion || '2.0',
+            data: { ...cleanDraft, tags: data.tags.split(',').map(s => s.trim()).filter(Boolean) }
           }
         }
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -746,11 +860,11 @@ window.__ModuleLoader__.load({
       }
 
       const addBookEntry = () => {
-        setBookDraft(prev => ({
-          ...prev,
-          entries: [...prev.entries, { id: String(Date.now()), comment: '新条目', content: '', keys: [], secondaryKeys: [], enabled: true, constant: false, selective: false, caseSensitive: false, matchWholeWords: false, order: 0, priority: 0, probability: 100, selectiveLogic: 'AND_ANY', position: 1, depth: 4, excludeRecursion: false, preventRecursion: false }]
-        }))
-        setEditingEntryIndex(bookDraft.entries.length)
+        setBookDraft(prev => {
+          const newEntries = [...prev.entries, { id: String(Date.now()), comment: '新条目', content: '', keys: [], secondaryKeys: [], enabled: true, constant: false, selective: false, caseSensitive: false, matchWholeWords: false, order: 0, priority: 0, probability: 100, selectiveLogic: 'AND_ANY', position: 1, depth: 4, excludeRecursion: false, preventRecursion: false }]
+          setTimeout(() => setEditingEntryIndex(newEntries.length - 1), 0)
+          return { ...prev, entries: newEntries }
+        })
       }
       const removeBookEntry = (idx) => {
         setBookDraft(prev => ({ ...prev, entries: prev.entries.filter((_, i) => i !== idx) }))
@@ -769,7 +883,7 @@ window.__ModuleLoader__.load({
         try {
           const res = await call('/builtin/install', { type })
           if (res.ok) {
-            notify(`已成功安装「${type === 'qianmian' ? '千面' : '万物'}」预设！\n请前往会话选择该预设，与 AI 对话生成 JSON，然后将 JSON 粘贴回此处。`)
+            notify(`已成功安装「${type === 'qianmian' ? '千面' : '万物'}」预设！\n请前往会话选择该预设，与 AI 对话生成 JSON，再把 JSON 保存成 .json 文件，点「从 JSON 导入」载入。`)
             await reload()
           } else {
             notify(res.error || '安装失败', 'error')
@@ -786,10 +900,9 @@ window.__ModuleLoader__.load({
           ])
         ]),
 
-        // 内置向导安装区
-        h('div', { key: 'builtin', style: { ...S.card, background: 'var(--dsw-alias-bg-layer-2)' } }, [
+        h('div', { key: 'builtin', className: 'dsh-bard-card', style: { ...S.card, background: 'var(--dsw-alias-bg-layer-2)' } }, [
           h('div', { style: { fontWeight: 600, marginBottom: '8px' } }, '✨ AI 辅助生成'),
-          h('div', { style: { ...S.muted, marginBottom: '12px' } }, '没有灵感？可以一键安装官方提供的内置向导，在 DSH 会话里与它们对话生成内容，然后把输出的 JSON 贴到下面。'),
+          h('div', { style: { ...S.muted, marginBottom: '12px' } }, '没有灵感？可以一键安装官方提供的内置向导，在 DSH 会话里与它们对话生成内容，然后把输出的 JSON 保存成 .json 文件，点上方「从 JSON 导入」载入。'),
           h('div', { style: S.row }, [
             h(Btn, { onClick: () => installBuiltin('qianmian'), disabled: busy }, '安装「千面」（造人向导）'),
             h(Btn, { onClick: () => installBuiltin('wanwu'), disabled: busy }, '安装「万物」（造物向导）'),
@@ -817,12 +930,12 @@ window.__ModuleLoader__.load({
               : state.worldbooks.map(b => h('option', { key: b.id, value: b.id }, b.name)))
           ]),
           h(Btn, { key: 'new', onClick: mode === 'card' ? createNewCard : createNewBook }, '+ 新建空白'),
-          h(Btn, { key: 'import', onClick: importJson }, '从 JSON 导入')
+          h(Btn, { key: 'import', onClick: () => jsonFileRef.current && jsonFileRef.current.click() }, '从 JSON 导入'),
+          h('input', { key: 'jsonf', ref: jsonFileRef, type: 'file', accept: '.json,application/json', style: { display: 'none' }, onChange: onJsonFile })
         ]),
 
-        // 主编辑区
         h('div', { key: 'main', style: { flex: '1 1 auto', minWidth: '0' } }, [
-          mode === 'card' ? h('div', { key: 'cardForm', style: S.card }, [
+          mode === 'card' ? h('div', { key: 'cardForm', className: 'dsh-bard-card', style: S.card }, [
             h('div', { key: 'top', style: S.between }, [
               h('span', { key: 't', style: { ...S.name, fontSize: '16px' } }, editingId ? '编辑角色卡' : '新建角色卡'),
               h('div', { key: 'acts', style: S.row }, [
@@ -841,7 +954,7 @@ window.__ModuleLoader__.load({
                 h('div', { style: { ...S.muted, marginTop: '4px' } }, '仅用于预览和导出 PNG 的底图，不改变原有卡图。')
               ])
             ]),
-            h(Section, { key: 's1', title: '基础信息', defaultOpen: true }, [
+            h(Section, { key: 's1', title: '基础信息', open: openSection === 's1', onToggle: (v) => setOpenSection(v ? 's1' : '') }, [
               h('div', { style: S.grid }, [
                 h(Field, { label: '角色名' }, h('input', { style: S.input, value: cardDraft.name, onChange: e => setCardDraft({ ...cardDraft, name: e.target.value }) })),
                 h(Field, { label: '作者' }, h('input', { style: S.input, value: cardDraft.creator, onChange: e => setCardDraft({ ...cardDraft, creator: e.target.value }) })),
@@ -849,21 +962,21 @@ window.__ModuleLoader__.load({
                 h(Field, { label: '标签' }, h('input', { style: S.input, value: cardDraft.tags, onChange: e => setCardDraft({ ...cardDraft, tags: e.target.value }), placeholder: '逗号分隔' })),
               ])
             ]),
-            h(Section, { key: 's2', title: '核心设定', defaultOpen: true }, [
+            h(Section, { key: 's2', title: '核心设定', open: openSection === 's2', onToggle: (v) => setOpenSection(v ? 's2' : '') }, [
               h(Field, { label: '角色简介' }, h(AutoResizeTextarea, { style: { ...S.input, minHeight: '120px' }, value: cardDraft.description, onChange: e => setCardDraft({ ...cardDraft, description: e.target.value }) })),
               h(Field, { label: '性格' }, h(AutoResizeTextarea, { style: { ...S.input, minHeight: '80px' }, value: cardDraft.personality, onChange: e => setCardDraft({ ...cardDraft, personality: e.target.value }) })),
               h(Field, { label: '场景' }, h(AutoResizeTextarea, { style: { ...S.input, minHeight: '80px' }, value: cardDraft.scenario, onChange: e => setCardDraft({ ...cardDraft, scenario: e.target.value }) })),
             ]),
-            h(Section, { key: 's3', title: '对话表现', defaultOpen: true }, [
+            h(Section, { key: 's3', title: '对话表现', open: openSection === 's3', onToggle: (v) => setOpenSection(v ? 's3' : '') }, [
               h(Field, { label: '开场白' }, h(AutoResizeTextarea, { style: { ...S.input, minHeight: '100px' }, value: cardDraft.firstMes, onChange: e => setCardDraft({ ...cardDraft, firstMes: e.target.value }) })),
               h(Field, { label: '对话示例' }, h(AutoResizeTextarea, { style: { ...S.input, minHeight: '100px' }, value: cardDraft.mesExample, onChange: e => setCardDraft({ ...cardDraft, mesExample: e.target.value }) })),
             ]),
-            h(Section, { key: 's4', title: '高级指令', defaultOpen: false }, [
+            h(Section, { key: 's4', title: '高级指令', open: openSection === 's4', onToggle: (v) => setOpenSection(v ? 's4' : '') }, [
               h(Field, { label: '角色专属系统指令' }, h(AutoResizeTextarea, { style: { ...S.input, minHeight: '80px' }, value: cardDraft.systemPrompt, onChange: e => setCardDraft({ ...cardDraft, systemPrompt: e.target.value }) })),
               h(Field, { label: '每轮都要遵守' }, h(AutoResizeTextarea, { style: { ...S.input, minHeight: '80px' }, value: cardDraft.postHistoryInstructions, onChange: e => setCardDraft({ ...cardDraft, postHistoryInstructions: e.target.value }) })),
               h(Field, { label: '深度提示' }, h(AutoResizeTextarea, { style: { ...S.input, minHeight: '80px' }, value: cardDraft.depthPrompt, onChange: e => setCardDraft({ ...cardDraft, depthPrompt: e.target.value }) })),
             ])
-          ]) : h('div', { key: 'bookForm', style: S.card }, [
+          ]) : h('div', { key: 'bookForm', className: 'dsh-bard-card', style: S.card }, [
             h('div', { key: 'top', style: S.between }, [
               h('span', { key: 't', style: { ...S.name, fontSize: '16px' } }, editingId ? '编辑世界书' : '新建世界书'),
               h('div', { key: 'acts', style: S.row }, [
@@ -874,7 +987,6 @@ window.__ModuleLoader__.load({
             h(Field, { label: '世界书名称' }, h('input', { style: S.input, value: bookDraft.name, onChange: e => setBookDraft({ ...bookDraft, name: e.target.value }), placeholder: '如：异世界地理志' })),
             
             h('div', { style: { display: 'flex', gap: '16px', marginTop: '16px', alignItems: 'flex-start' } }, [
-              // 条目列表
               h('div', { style: { flex: '0 0 200px', display: 'flex', flexDirection: 'column', gap: '6px' } }, [
                 h(Btn, { onClick: addBookEntry, style: { width: '100%' } }, '+ 添加条目'),
                 bookDraft.entries.map((entry, idx) => h('div', { key: idx, style: { ...S.item, padding: '8px', cursor: 'pointer', outline: editingEntryIndex === idx ? '2px solid var(--dsw-alias-brand-primary)' : 'none' }, onClick: () => setEditingEntryIndex(idx) }, [
@@ -882,7 +994,6 @@ window.__ModuleLoader__.load({
                   h(Btn, { variant: 'danger', style: { padding: '2px 6px' }, onClick: (e) => { e.stopPropagation(); removeBookEntry(idx) } }, '×')
                 ]))
               ]),
-              // 条目详情
               h('div', { style: { flex: '1 1 auto', padding: '16px', background: 'var(--dsw-alias-bg-layer-2)', borderRadius: '8px' } }, editingEntryIndex >= 0 && bookDraft.entries[editingEntryIndex] ? (() => {
                 const ent = bookDraft.entries[editingEntryIndex]
                 const up = (p) => updateEntry(editingEntryIndex, p)
@@ -913,7 +1024,6 @@ window.__ModuleLoader__.load({
     // PresetsTab
     // -----------------------------------------------------------------------
 
-    const DEFAULT_TOOL_ALLOWLIST = ['read', 'write', 'edit']
     const GENDERS = [{ value: '', label: '未指定' }, { value: '男', label: '男' }, { value: '女', label: '女' }]
     const LANGUAGES = [{ value: '', label: '自动（不指定）' }, { value: '简体中文', label: '简体中文' }, { value: '繁體中文', label: '繁體中文' }, { value: 'English', label: 'English' }, { value: '日本語', label: '日本語' }, { value: '한국어', label: '한국어' }]
     
@@ -926,6 +1036,14 @@ window.__ModuleLoader__.load({
       { id: 'depth', title: '角色的持续提醒', order: 350 }, { id: 'postHistory', title: '每轮都要遵守', order: 360 },
     ]
 
+    function resolveToolsModeClient(options) {
+      if (!options || typeof options !== 'object') return 'all'
+      if (options.toolsMode === 'all' || options.toolsMode === 'allowlist' || options.toolsMode === 'none') return options.toolsMode
+      if (options.enableTools === false) return 'none'
+      if (Array.isArray(options.toolAllowlist) && options.toolAllowlist.length > 0) return 'allowlist'
+      return 'all'
+    }
+
     function normalizeBlocksClient(raw, options, defs) {
       const src = raw && typeof raw === 'object' ? raw : {}
       const list = Array.isArray(defs) && defs.length > 0 ? defs : BLOCKS
@@ -934,7 +1052,7 @@ window.__ModuleLoader__.load({
         const item = src[def.id] || {}
         out[def.id] = { enabled: item.enabled !== false, order: Number.isFinite(item.order) ? item.order : null, text: typeof item.text === 'string' ? item.text : null }
       }
-      if (options && options.enableTools === false && out.agency) out.agency.enabled = false
+      if (options && resolveToolsModeClient(options) === 'none' && out.agency) out.agency.enabled = false
       return out
     }
 
@@ -949,17 +1067,20 @@ window.__ModuleLoader__.load({
     }
     function toolSectionChecked(name, draft, toolPrefix) {
       if (!name.startsWith(toolPrefix)) return false
-      if (draft.enableTools === false) return false
+      const mode = resolveToolsModeClient(draft)
+      if (mode === 'none') return false
+      if (mode === 'all') return true
       const allow = Array.isArray(draft.toolAllowlist) ? draft.toolAllowlist : []
-      if (allow.length === 0) return true
       return allow.includes(name.slice(toolPrefix.length))
     }
 
     function BlockEditor(props) {
-      const { draft, setDraft, availableBlocks } = props
+      const { draft, setDraft, availableBlocks, onReorder } = props
       const defs = Array.isArray(props.blockDefs) && props.blockDefs.length > 0 ? props.blockDefs : BLOCKS
       const [editing, setEditing] = useState('')
       const [buffer, setBuffer] = useState('')
+      const [dragId, setDragId] = useState('')
+      const [dragOverId, setDragOverId] = useState('')
       const states = normalizeBlocksClient(draft.blocks, draft, defs)
       const info = new Map((Array.isArray(availableBlocks) ? availableBlocks : []).map((b) => [b.id, b]))
 
@@ -970,28 +1091,62 @@ window.__ModuleLoader__.load({
         return def.order
       }
       const sorted = defs.slice().sort((a, b) => orderOf(a) - orderOf(b))
+      const touch = () => { if (typeof onReorder === 'function') onReorder() }
 
-      const setBlock = (id, patch) => setDraft((d) => {
-        const next = normalizeBlocksClient(d.blocks, d, defs); next[id] = { ...next[id], ...patch }
-        return { ...d, blocks: next }
-      })
-      const setAll = (enabled) => setDraft((d) => {
-        const next = normalizeBlocksClient(d.blocks, d, defs)
-        for (const def of defs) next[def.id] = { ...next[def.id], enabled }
-        return { ...d, blocks: next }
-      })
-      const move = (def, delta) => {
-        const visible = sorted.filter((d) => states[d.id] && states[d.id].enabled !== false)
-        const at = visible.findIndex((d) => d.id === def.id); if (at < 0) return
-        const other = visible[at + delta]; if (!other) return
-        const a = orderOf(def), b = orderOf(other)
+      const setBlock = (id, patch) => {
         setDraft((d) => {
-          const next = normalizeBlocksClient(d.blocks, d, defs)
-          next[def.id] = { ...next[def.id], order: a === b ? b + delta : b }
-          next[other.id] = { ...next[other.id], order: a === b ? a - delta : a }
+          const next = normalizeBlocksClient(d.blocks, d, defs); next[id] = { ...next[id], ...patch }
           return { ...d, blocks: next }
         })
+        touch()
       }
+      const setAll = (enabled) => {
+        setDraft((d) => {
+          const next = normalizeBlocksClient(d.blocks, d, defs)
+          for (const def of defs) next[def.id] = { ...next[def.id], enabled }
+          return { ...d, blocks: next }
+        })
+        touch()
+      }
+      const reorder = (fromId, toId) => {
+        setDraft((d) => {
+          const next = normalizeBlocksClient(d.blocks, d, defs)
+          const ordered = defs
+            .filter((dd) => next[dd.id] && next[dd.id].enabled !== false)
+            .map((dd) => ({ id: dd.id, order: orderOf(dd) }))
+            .sort((a, b) => a.order - b.order)
+          const fromIdx = ordered.findIndex((o) => o.id === fromId)
+          const toIdx = ordered.findIndex((o) => o.id === toId)
+          if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return d
+          const moved = ordered.splice(fromIdx, 1)[0]
+          ordered.splice(toIdx, 0, moved)
+          const updated = { ...next }
+          for (let i = 0; i < ordered.length; i += 1) updated[ordered[i].id] = { ...updated[ordered[i].id], order: 200 + i * 10 }
+          return { ...d, blocks: updated }
+        })
+        touch()
+      }
+      const onDragStart = (def, e) => {
+        if (!(states[def.id] && states[def.id].enabled !== false)) { e.preventDefault(); return }
+        setDragId(def.id)
+        e.dataTransfer.effectAllowed = 'move'
+        try { e.dataTransfer.setData('text/plain', def.id) } catch (error) { /* 某些环境不允许写 dataTransfer */ }
+      }
+      const onDragOver = (def, e) => {
+        if (!dragId || dragId === def.id) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+        if (dragOverId !== def.id) setDragOverId(def.id)
+      }
+      const onDragLeave = (def) => { if (dragOverId === def.id) setDragOverId('') }
+      const onDrop = (def, e) => {
+        e.preventDefault()
+        let from = dragId
+        if (!from) { try { from = e.dataTransfer.getData('text/plain') } catch (error) { from = '' } }
+        setDragId(''); setDragOverId('')
+        if (from && from !== def.id) reorder(from, def.id)
+      }
+      const onDragEnd = () => { setDragId(''); setDragOverId('') }
       const openEditor = (def) => {
         if (editing === def.id) { setEditing(''); return }
         const state = states[def.id] || {}; const meta = info.get(def.id)
@@ -1004,8 +1159,26 @@ window.__ModuleLoader__.load({
         const enabled = state.enabled !== false; const overridden = typeof state.text === 'string'
         const editable = overridden || !!meta; const chars = meta ? meta.chars : null
         const isEmpty = meta ? meta.empty === true : (overridden && state.text.length === 0)
+        const isDragging = dragId === def.id
+        const isDropTarget = dragOverId === def.id && dragId !== def.id
 
-        const row = h('div', { key: def.id, style: { ...S.blockRow, ...(!enabled ? S.blockRowDisabled : {}) } }, [
+        const row = h('div', {
+          key: def.id,
+          draggable: enabled,
+          style: {
+            ...S.blockRow,
+            ...(!enabled ? S.blockRowDisabled : {}),
+            cursor: enabled ? (isDragging ? 'grabbing' : 'grab') : 'default',
+            opacity: isDragging ? 0.4 : 1,
+            ...(isDropTarget ? { boxShadow: 'inset 0 2px 0 var(--dsw-alias-brand-primary)' } : {}),
+          },
+          onDragStart: (e) => onDragStart(def, e),
+          onDragOver: (e) => onDragOver(def, e),
+          onDragLeave: () => onDragLeave(def),
+          onDrop: (e) => onDrop(def, e),
+          onDragEnd,
+        }, [
+          h('span', { key: 'g', style: { ...S.muted, fontFamily: 'monospace', width: '16px', textAlign: 'center', opacity: 0.5 } }, '⋮⋮'),
           h('input', { key: 'c', type: 'checkbox', checked: enabled, onChange: (e) => setBlock(def.id, { enabled: e.target.checked }) }),
           h('span', { key: 'o', style: { ...S.muted, fontFamily: 'monospace', width: '30px' } }, String(orderOf(def))),
           h('span', { key: 't', style: { flex: '1 1 140px', minWidth: 0, fontWeight: enabled ? 500 : 400 } }, def.title),
@@ -1014,8 +1187,6 @@ window.__ModuleLoader__.load({
           chars !== null && chars > 0 ? h('span', { key: 'ch', style: S.blockTag }, `${chars} 字`) : null,
           h('div', { key: 'act', style: { display: 'flex', gap: '4px', marginLeft: 'auto' } }, [
             h(Btn, { key: 'e', variant: 'icon', disabled: !editable, onClick: () => openEditor(def) }, editing === def.id ? '收起' : '编辑'),
-            h(Btn, { key: 'u', variant: 'icon', disabled: !enabled, onClick: () => move(def, -1) }, h(Icon, { name: 'chevronUp', size: 11 })),
-            h(Btn, { key: 'd', variant: 'icon', disabled: !enabled, onClick: () => move(def, 1) }, h(Icon, { name: 'chevronDown', size: 11 })),
             h(Btn, { key: 'r', variant: 'icon', disabled: !overridden, onClick: () => setBlock(def.id, { text: null }) }, '重置'),
           ])
         ])
@@ -1033,21 +1204,216 @@ window.__ModuleLoader__.load({
       })
 
       return h('div', null, [
-        h('div', { key: 'hint', style: { ...S.muted, marginBottom: '12px' } }, '每块都是独立的系统提示 section：可单独停用、调顺序、改写文案。改写只作用于这个预设，不改角色卡；「重置」让它重新跟随角色卡。'),
+        h('div', { key: 'hint', style: { ...S.muted, marginBottom: '12px' } }, '拖动 ⋮⋮ 手柄调整顺序；勾选/停用与文案改动会自动保存（选中角色卡之后）。'),
         h('div', { key: 'list', style: { display: 'flex', flexDirection: 'column', gap: '4px' } }, rows),
         h('div', { key: 'act', style: { ...S.row, marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--dsw-alias-border-l1)' } }, [
           h(Btn, { key: 'on', onClick: () => setAll(true) }, '全部启用'),
           h(Btn, { key: 'off', onClick: () => setAll(false) }, '全部停用'),
-          h(Btn, { key: 'rst', onClick: () => setDraft((d) => { const next = normalizeBlocksClient(d.blocks, d, defs); for (const def of defs) next[def.id] = { ...next[def.id], order: null }; return { ...d, blocks: next } }) }, '恢复默认顺序'),
+          h(Btn, { key: 'rst', onClick: () => { setDraft((d) => { const next = normalizeBlocksClient(d.blocks, d, defs); for (const def of defs) next[def.id] = { ...next[def.id], order: null }; return { ...d, blocks: next } }); touch() } }, '恢复默认顺序'),
         ]),
       ])
     }
 
     // -----------------------------------------------------------------------
-    // Alzheimer Settings (独立分区)
+    // Alzheimer Settings (暗面模式)
     // -----------------------------------------------------------------------
 
-    function AlzheimerSettings() {
+    function MemorySparkline(props) {
+      const points = Array.isArray(props.points) ? props.points : []
+      const state = props.state || 'active'
+      const color = state === 'held' ? '#4d6bfe'
+        : state === 'faded' ? '#9ca3af'
+          : state === 'fading' ? '#f59e0b'
+            : '#16a34a'
+      const boxW = 64
+      const boxH = 22
+      const n = points.length
+      if (n === 0) return null
+      const xOf = (i) => (n <= 1 ? boxW / 2 : 1 + (i / (n - 1)) * (boxW - 2))
+      const yOf = (c) => (boxH - 1) - Math.max(0, Math.min(1, c)) * (boxH - 2)
+      const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(i).toFixed(1)},${yOf(p.clarity).toFixed(1)}`).join(' ')
+      return h('svg', { width: boxW, height: boxH, viewBox: `0 0 ${boxW} ${boxH}`, style: { display: 'block' }, 'aria-label': '记忆衰减曲线' }, [
+        h('path', {
+          key: 'p', d, fill: 'none', stroke: color, strokeWidth: 1.5,
+          strokeLinejoin: 'round', strokeLinecap: 'round',
+        }),
+      ])
+    }
+
+    function MemoryCurveChart(props) {
+      const curve = props.curve || {}
+      const points = Array.isArray(curve.points) ? curve.points : []
+      const n = points.length
+      if (n === 0) return null
+      const boxW = 420
+      const boxH = 140
+      const pad = { l: 30, r: 12, t: 14, b: 24 }
+      const iw = boxW - pad.l - pad.r
+      const ih = boxH - pad.t - pad.b
+      const xOf = (i) => (n <= 1 ? pad.l + iw / 2 : pad.l + (i / (n - 1)) * iw)
+      const yOf = (c) => pad.t + ih - Math.max(0, Math.min(1, c)) * ih
+      const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(i).toFixed(1)},${yOf(p.clarity).toFixed(1)}`).join(' ')
+      const state = curve.state || 'active'
+      const color = state === 'held' ? '#4d6bfe'
+        : state === 'faded' ? '#9ca3af'
+          : state === 'fading' ? '#f59e0b'
+            : '#16a34a'
+      const yTicks = [0, 0.25, 0.5, 0.75, 1]
+      const xTickIdx = [0, Math.round((n - 1) / 2), n - 1].filter((v, i, arr) => arr.indexOf(v) === i)
+      const labels = { held: '抓住中', fading: '正在模糊', faded: '已模糊', active: '清晰' }
+      const gridLines = yTicks.map((t) => h('line', {
+        key: `y-${t}`, x1: pad.l, x2: pad.l + iw, y1: yOf(t), y2: yOf(t),
+        stroke: 'var(--dsw-alias-border-l1)', strokeWidth: 1,
+        strokeDasharray: (t === 0 || t === 1) ? '' : '2 3',
+      }))
+      const yLabels = yTicks.map((t) => h('text', {
+        key: `yl-${t}`, x: pad.l - 4, y: yOf(t) + 3, fontSize: 9,
+        fill: 'var(--dsw-alias-label-secondary)', textAnchor: 'end',
+      }, `${(t * 100).toFixed(0)}`))
+      const xLabels = xTickIdx.map((i) => h('text', {
+        key: `xl-${i}`, x: xOf(i), y: boxH - 6, fontSize: 9,
+        fill: 'var(--dsw-alias-label-secondary)', textAnchor: 'middle',
+      }, `+${Math.round(points[i].day)}天`))
+      return h('div', { style: { marginTop: '10px', padding: '12px', background: 'var(--dsw-alias-bg-layer-2)', borderRadius: '8px' } }, [
+        h('div', { key: 'head', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' } }, [
+          h('span', { key: 't', style: { fontSize: '12px', fontWeight: 600 } }, `未来 ${points[n - 1].day.toFixed(0)} 天清晰度预测`),
+          h('span', { key: 'm', style: { fontSize: '11px', color: 'var(--dsw-alias-label-secondary)' } },
+            `当前 ${((curve.currentClarity || 0) * 100).toFixed(0)}% · ${labels[state] || state} · 讲过 ${curve.restateCount || 0} 次`),
+        ]),
+        h('svg', { key: 'svg', width: '100%', viewBox: `0 0 ${boxW} ${boxH}`, style: { display: 'block', maxWidth: `${boxW}px` } }, [
+          ...gridLines,
+          h('line', { key: 'th-fading', x1: pad.l, x2: pad.l + iw, y1: yOf(0.6), y2: yOf(0.6), stroke: '#f59e0b', strokeWidth: 1, strokeDasharray: '4 3', opacity: 0.55 }),
+          h('line', { key: 'th-faded', x1: pad.l, x2: pad.l + iw, y1: yOf(0.25), y2: yOf(0.25), stroke: '#9ca3af', strokeWidth: 1, strokeDasharray: '4 3', opacity: 0.55 }),
+          ...yLabels,
+          ...xLabels,
+          h('path', { key: 'curve', d, fill: 'none', stroke: color, strokeWidth: 2, strokeLinejoin: 'round', strokeLinecap: 'round' }),
+        ]),
+        state === 'held'
+          ? h('div', { key: 'note', style: { fontSize: '11px', color: 'var(--dsw-alias-label-secondary)', marginTop: '6px' } }, '她死死抓着这条记忆。曲线是平的——直到她松手。')
+          : null,
+      ])
+    }
+
+    function PersonaDetail(props) {
+      const { persona, notify, reload } = props
+      const [openSection, setOpenSection] = useState('mem')
+      const [curves, setCurves] = useState(null)
+      const [openCurve, setOpenCurve] = useState('')
+      const memories = Array.isArray(persona.memories) ? persona.memories : []
+      const impressions = Array.isArray(persona.impressions) ? persona.impressions : []
+      const active = memories.filter((m) => m.state === 'active' || m.state === 'held')
+      const fading = memories.filter((m) => m.state === 'fading' || m.state === 'faded')
+      const ratio = typeof persona.anchoredRatio === 'number' ? persona.anchoredRatio : 1
+
+      useEffect(() => {
+        let live = true
+        setCurves(null)
+        setOpenCurve('')
+        call('/memory/curves', { id: persona.id, days: 30, points: 30 })
+          .then((res) => { if (live) setCurves(Array.isArray(res.curves) ? res.curves : []) })
+          .catch(() => { if (live) setCurves([]) })
+        return () => { live = false }
+      }, [persona.id])
+
+      const curveById = useMemo(() => {
+        const map = new Map()
+        for (const c of curves || []) {
+          if (c && typeof c.id === 'string') map.set(c.id, c)
+        }
+        return map
+      }, [curves])
+
+      return h('div', { key: 'detail', style: S.list }, [
+        h('div', { key: 'stat', className: 'dsh-bard-card', style: S.card }, [
+          h('div', { key: 'head', style: S.between }, [
+            h('div', { key: 't', style: S.name }, `${persona.name || persona.id}`),
+            h(Btn, { 
+              variant: 'danger', 
+              onClick: async () => {
+                if (!window.confirm(`彻底遗忘「${persona.name || persona.id}」？\n\n记忆、叙事和人格将被永久删除。这是不可逆的。`)) return
+                try {
+                  const res = await call('/persona/delete', { id: persona.id, force: true })
+                  if (res.ok) {
+                    notify('已遗忘。')
+                    reload()
+                  } else {
+                    notify(res.error || '遗忘失败', 'error')
+                  }
+                } catch (e) { notify(String(e.message), 'error') }
+              } 
+            }, '遗忘')
+          ]),
+          h('div', { key: 'm', style: { ...S.muted, marginTop: '6px' } }, [
+            `第 ${persona.generation} 世`,
+            `${active.length} 条清晰`,
+            `${fading.length} 条模糊`,
+            `${impressions.length} 条印象`,
+            `带锚比例 ${(ratio * 100).toFixed(0)}%`,
+          ].join(' · ')),
+          h('div', { key: 'drift', style: { ...S.muted, marginTop: '4px', fontSize: '11px' } }, [
+            persona.driftState
+              ? (persona.driftState.remaining > 0
+                  ? `异样感冷却中（还剩 ${persona.driftState.remaining} 轮）`
+                  : persona.driftState.level > 0
+                    ? `异样感曾触发过 ${persona.driftState.level} 次`
+                    : '还没有触发过异样感')
+              : '还没有触发过异样感'
+          ]),
+          h('div', { key: 'id', style: { ...S.muted, fontFamily: 'monospace', marginTop: '4px' } }, persona.id),
+        ]),
+
+        h(Section, { key: 'mem', title: `记忆（${memories.length}）`, open: openSection === 'mem', onToggle: (v) => setOpenSection(v ? 'mem' : '') }, [
+          memories.length === 0 ? h('div', { key: 'e', style: S.muted }, '她还没有写下任何记忆。')
+            : h('div', { key: 'list', style: S.list }, memories.slice().reverse().map((m) => {
+              const curve = curveById.get(m.id)
+              const expanded = openCurve === m.id
+              const metaLine = [
+                m.state === 'held' ? '抓住' : m.state === 'fading' ? '正在模糊' : m.state === 'faded' ? '已模糊' : '清晰',
+                `清晰度 ${(m.clarity * 100).toFixed(0)}%`,
+                `讲过 ${m.restateCount || 0} 次`,
+                m.scene ? `场景：${m.scene}` : '',
+              ].filter(Boolean).join(' · ')
+              return h('div', { key: m.id, style: { ...S.item, flexDirection: 'column', alignItems: 'stretch' } }, [
+                h('div', { key: 'row', style: { display: 'flex', gap: '12px', alignItems: 'flex-start' } }, [
+                  h('div', { key: 'm', style: S.grow }, [
+                    h('div', { key: 't', style: { ...S.prose, fontSize: '13px' } }, m.text),
+                    h('div', { key: 's', style: { ...S.muted, marginTop: '4px' } }, metaLine),
+                  ]),
+                  curve ? h('div', {
+                    key: 'spark',
+                    role: 'button',
+                    tabIndex: 0,
+                    title: expanded ? '收起曲线' : '查看衰减曲线',
+                    style: { flex: '0 0 auto', cursor: 'pointer', padding: '2px', borderRadius: '4px', outline: expanded ? '1px solid var(--dsw-alias-brand-primary)' : 'none', outlineOffset: '2px' },
+                    onClick: () => setOpenCurve(expanded ? '' : m.id),
+                    onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenCurve(expanded ? '' : m.id) } },
+                  }, h(MemorySparkline, { points: curve.points, state: m.state })) : null,
+                ]),
+                expanded && curve ? h(MemoryCurveChart, { key: 'chart', curve }) : null,
+              ])
+            })),
+        ]),
+
+        impressions.length > 0 ? h(Section, { key: 'imp', title: `印象（${impressions.length}）`, open: openSection === 'imp', onToggle: (v) => setOpenSection(v ? 'imp' : '') }, [
+          h('div', { key: 'list', style: S.list }, impressions.map((imp) => h('div', { key: imp.id, style: S.item }, [
+            h('div', { key: 'm', style: S.grow }, [
+              h('div', { key: 't', style: { ...S.prose, fontSize: '13px', opacity: 0.7 } }, imp.text),
+              h('div', { key: 's', style: { ...S.muted, marginTop: '4px' } }, `${imp.count} 条记忆的轮廓`),
+            ]),
+          ]))),
+        ]) : null,
+
+        h(Section, { key: 'nar', title: '叙事弧', open: openSection === 'nar', onToggle: (v) => setOpenSection(v ? 'nar' : '') }, [
+          (persona.chapters || []).map((ch, i) => h('div', { key: i, style: { marginBottom: '12px' } }, [
+            h('div', { key: 'h', style: { ...S.label } }, `第 ${ch.generation} 世${ch.endedAt ? '（已结束）' : '（此刻）'}`),
+            ch.summary ? h('div', { key: 's', style: S.prose }, ch.summary) : h('div', { key: 'e', style: S.muted }, '还没有写下这一世的总结。'),
+            ch.farewell ? h('div', { key: 'f', style: { ...S.quote, marginTop: '8px' } }, ch.farewell) : null,
+          ])),
+        ]),
+      ])
+    }
+
+    function AlzheimerContent(props) {
       const [state, setState] = useState(null)
       const [failure, setFailure] = useState('')
       const [notice, setNotice] = useState(null)
@@ -1064,118 +1430,56 @@ window.__ModuleLoader__.load({
 
       useEffect(() => { load() }, [load])
 
-      if (failure) {
-        return h('div', { className: 'dsh-bard-scope', style: S.page }, [
-          h('div', { key: 't', style: S.name }, '阿尔兹海默'),
-          h('div', { key: 'e', style: S.alert }, `读取失败：${failure}`),
-          h(Btn, { key: 'r', onClick: load }, '重试'),
-        ])
+      const goToPresets = () => {
+        if (props.onNavigateToPresets) props.onNavigateToPresets()
       }
-      if (!state) return h('div', { className: 'dsh-bard-scope', style: S.page }, [h('div', { key: 'l', style: S.muted }, '正在读取…')])
+
+      if (failure) {
+        return [
+          h('div', { key: 'e', style: S.alert }, `读取失败：${failure}`),
+          h('div', { key: 'r', style: { marginTop: '12px' } }, h(Btn, { onClick: load }, '重试')),
+        ]
+      }
+      if (!state) return h('div', { key: 'l', style: { ...S.muted, padding: '20px' } }, '正在读取…')
 
       const personas = Array.isArray(state.personas) ? state.personas : []
       const effectiveId = selectedId && personas.some((p) => p.id === selectedId) ? selectedId : (personas[0]?.id || '')
       const selected = personas.find((p) => p.id === effectiveId)
 
-      return h('div', { className: 'dsh-bard-scope', style: S.page }, [
-        h('div', { key: 'head', style: S.between }, [
-          h('div', { key: 'l' }, [
-            h('div', { key: 't', style: { ...S.name, fontSize: '20px' } }, '阿尔兹海默'),
-            h('div', { key: 's', style: { ...S.muted, marginTop: '4px' } }, '她的一生。记忆会散，但叙事还在。'),
-          ]),
-          h('span', { key: 'c', style: S.muted }, `${personas.length} 个人格`),
-        ]),
-
+      return [
         notice ? h('div', { key: 'n', style: notice.kind === 'error' ? S.alert : S.ok }, notice.text) : null,
 
         personas.length === 0
-          ? h('div', { key: 'empty', style: S.card }, [
-            h('div', { key: 't', style: S.name }, '还没有人格'),
-            h('div', { key: 's', style: { ...S.muted, marginTop: '6px' } }, '在「预设」里创建一个预设，并为它绑定一个新人格。'),
+          ? h('div', { key: 'empty', className: 'dsh-bard-card', style: { ...S.card, textAlign: 'center', padding: '80px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' } }, [
+            h('div', { key: 't', style: { fontSize: '15px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } }, '还没有人格'),
+            h('div', { key: 's', style: { ...S.muted, marginTop: '6px', marginBottom: '24px' } }, '人格承载着角色在阿尔兹海默系统下的记忆与叙事。'),
+            h('button', {
+              key: 'go',
+              className: 'dsh-bard-btn dsh-bard-btn-primary',
+              style: { padding: '10px 32px', fontSize: '14px', borderRadius: '24px' },
+              onClick: goToPresets
+            }, '去「吟游」预设页新建')
           ])
           : h('div', { key: 'body', style: S.list }, [
-            h('div', { key: 'sel', style: S.row }, [
+            h('div', { key: 'sel', style: { ...S.row, marginBottom: '8px' } }, [
               h('span', { key: 'l', style: S.label }, '选择人格'),
-              h('select', {
-                key: 's', style: { ...S.select, maxWidth: '400px' },
-                value: effectiveId,
-                onChange: (e) => setSelectedId(e.target.value),
-              }, personas.map((p) => h('option', { key: p.id, value: p.id }, `${p.name || p.id} · 第 ${p.generation} 世`))),
+              h('div', { style: { display: 'flex', gap: '8px', flex: 1, maxWidth: '400px' } }, [
+                h('select', {
+                  key: 's', style: { ...S.select, flex: 1 },
+                  value: effectiveId,
+                  onChange: (e) => setSelectedId(e.target.value),
+                }, personas.map((p) => h('option', { key: p.id, value: p.id }, `${p.name || p.id} · 第 ${p.generation} 世`))),
+                h(Btn, { onClick: goToPresets }, '+ 新建人格'),
+              ])
             ]),
-            selected ? renderPersonaDetail(selected, notify, load) : null,
+            selected ? h(PersonaDetail, { key: selected.id, persona: selected, notify, reload: load }) : null,
           ]),
-      ])
+      ]
     }
 
-    function renderPersonaDetail(persona, notify, reload) {
-      const memories = Array.isArray(persona.memories) ? persona.memories : []
-      const impressions = Array.isArray(persona.impressions) ? persona.impressions : []
-      const active = memories.filter((m) => m.state === 'active' || m.state === 'held')
-      const fading = memories.filter((m) => m.state === 'fading' || m.state === 'faded')
-      const ratio = typeof persona.anchoredRatio === 'number' ? persona.anchoredRatio : 1
-      return h('div', { key: 'detail', style: S.list }, [
-               h('div', { key: 'stat', style: S.card }, [
-          h('div', { key: 'head', style: S.between }, [
-            h('div', { key: 't', style: S.name }, `${persona.name || persona.id}`),
-            h(Btn, { 
-              variant: 'danger', 
-              onClick: async () => {
-                if (!window.confirm(`彻底遗忘「${persona.name || persona.id}」？\n\n记忆、叙事和人格将被永久删除。这是不可逆的。`)) return
-                try {
-                  const res = await call('/persona/delete', { id: persona.id, force: true })
-                  if (res.ok) {
-                    notify('已遗忘。')
-                    reload() // 刷新列表
-                  } else {
-                    notify(res.error || '遗忘失败', 'error')
-                  }
-                } catch (e) { notify(String(e.message), 'error') }
-              } 
-            }, '遗忘')
-          ]),
-          h('div', { key: 'm', style: { ...S.muted, marginTop: '6px' } }, [
-            `第 ${persona.generation} 世`,
-            `${active.length} 条清晰`,
-            `${fading.length} 条模糊`,
-            `${impressions.length} 条印象`,
-            `带锚比例 ${(ratio * 100).toFixed(0)}%`,
-          ].join(' · ')),
-          h('div', { key: 'id', style: { ...S.muted, fontFamily: 'monospace', marginTop: '4px' } }, persona.id),
-        ]),
-
-        h(Section, { key: 'mem', title: `记忆（${memories.length}）`, defaultOpen: true }, [
-          memories.length === 0 ? h('div', { key: 'e', style: S.muted }, '她还没有写下任何记忆。')
-            : h('div', { key: 'list', style: S.list }, memories.slice().reverse().map((m) => h('div', { key: m.id, style: S.item }, [
-              h('div', { key: 'm', style: S.grow }, [
-                h('div', { key: 't', style: { ...S.prose, fontSize: '13px' } }, m.text),
-                h('div', { key: 's', style: { ...S.muted, marginTop: '4px' } }, [
-                  m.state === 'held' ? '抓住' : m.state === 'fading' ? '正在模糊' : m.state === 'faded' ? '已模糊' : '清晰',
-                  `清晰度 ${(m.clarity * 100).toFixed(0)}%`,
-                  `讲过 ${m.restateCount || 0} 次`,
-                  m.scene ? `场景：${m.scene}` : '',
-                ].filter(Boolean).join(' · ')),
-              ]),
-            ]))),
-        ]),
-
-        impressions.length > 0 ? h(Section, { key: 'imp', title: `印象（${impressions.length}）`, defaultOpen: false }, [
-          h('div', { key: 'list', style: S.list }, impressions.map((imp) => h('div', { key: imp.id, style: S.item }, [
-            h('div', { key: 'm', style: S.grow }, [
-              h('div', { key: 't', style: { ...S.prose, fontSize: '13px', opacity: 0.7 } }, imp.text),
-              h('div', { key: 's', style: { ...S.muted, marginTop: '4px' } }, `${imp.count} 条记忆的轮廓`),
-            ]),
-          ]))),
-        ]) : null,
-
-        h(Section, { key: 'nar', title: '叙事弧', defaultOpen: true }, [
-          (persona.chapters || []).map((ch, i) => h('div', { key: i, style: { marginBottom: '12px' } }, [
-            h('div', { key: 'h', style: { ...S.label } }, `第 ${ch.generation} 世${ch.endedAt ? '（已结束）' : '（此刻）'}`),
-            ch.summary ? h('div', { key: 's', style: S.prose }, ch.summary) : h('div', { key: 'e', style: S.muted }, '还没有写下这一世的总结。'),
-            ch.farewell ? h('div', { key: 'f', style: { ...S.quote, marginTop: '8px' } }, ch.farewell) : null,
-          ])),
-        ]),
-      ])
-    }
+    // -----------------------------------------------------------------------
+    // PresetsTab (Continued)
+    // -----------------------------------------------------------------------
 
     function PresetsTab(props) {
       const { state, reload, notify, cardDetails, ensureCardDetail } = props
@@ -1191,7 +1495,7 @@ window.__ModuleLoader__.load({
       const emptyDraft = useCallback(() => ({
         id: '', name: '', cardId: '', greetingIndex: null,  personaId: '',worldbookIds: [], skillNames: [],
         styleHint: defaultStyleHint, extraInstructions: '', complete: false, includeRuntimeContext: true,
-        enableTools: true, toolAllowlist: DEFAULT_TOOL_ALLOWLIST.slice(), keepSections: [], keepSectionsEnabled: false,
+        toolsMode: 'all', toolAllowlist: [], keepSections: [], keepSectionsEnabled: false,
         workspaceEnabled: true, workspacePrefix: defaultWorkspacePrefix,
         userName: '', userGender: '', outputLanguage: '', maxEntries: 12, maxChars: 6000,
         blocks: normalizeBlocksClient(null),
@@ -1206,19 +1510,19 @@ window.__ModuleLoader__.load({
       const [skExpanded, setSkExpanded] = useState(false)
       const set = (patch) => setDraft((current) => ({ ...current, ...patch }))
 
-      const greetingsForDetail = (detail) => {
-        if (!detail) return []
-        const out = []
-        if (detail.firstMes) out.push({ label: '开场白', text: detail.firstMes })
-        ;(detail.alternateGreetings || []).forEach((text, index) => out.push({ label: `备用 ${index + 1}`, text }))
-        return out
-      }
+      const draftRef = useRef(draft)
+      draftRef.current = draft
+      const autoSaveTimer = useRef(null)
+      const savingRef = useRef(false)
+      const saveDraftRef = useRef(null)
+
+      const readToolsMode = resolveToolsModeClient
 
       const edit = async (preset) => {
         setGreetFor(''); setPreview(null)
         let detail = null
         try { detail = await ensureCardDetail(preset.cardId) } catch (error) { notify(String((error && error.message) || error), 'error') }
-        const greetings = greetingsForDetail(detail)
+        const greetings = getGreetingsFromDetail(detail)
         const rawIndex = Number.isInteger(preset.options.greetingIndex) && preset.options.greetingIndex >= 0 ? preset.options.greetingIndex : null
         setDraft({
           personaId: preset.options.personaId || '',
@@ -1227,7 +1531,7 @@ window.__ModuleLoader__.load({
           worldbookIds: preset.worldbookIds.slice(), skillNames: preset.skillNames.slice(),
           styleHint: preset.options.styleHint || '', extraInstructions: preset.options.extraInstructions || '',
           complete: preset.options.complete === true, includeRuntimeContext: preset.options.includeRuntimeContext !== false,
-          enableTools: preset.options.enableTools !== false,
+          toolsMode: readToolsMode(preset.options),
           toolAllowlist: Array.isArray(preset.options.toolAllowlist) ? preset.options.toolAllowlist.slice() : [],
           keepSections: Array.isArray(preset.options.keepSections) ? preset.options.keepSections : [],
           keepSectionsEnabled: preset.options.keepSectionsEnabled === true || (preset.options.keepSectionsEnabled === undefined && Array.isArray(preset.options.keepSections) && preset.options.keepSections.length > 0),
@@ -1244,6 +1548,7 @@ window.__ModuleLoader__.load({
         const list = draft[field].slice(); const at = list.indexOf(value)
         if (at >= 0) list.splice(at, 1); else list.push(value)
         set({ [field]: list })
+        scheduleAutoSave()
       }
       const toggleKeepSection = (name, on) => {
         setDraft((d) => {
@@ -1253,19 +1558,59 @@ window.__ModuleLoader__.load({
         })
       }
 
+      const saveDraft = useCallback(async (opts = {}) => {
+        const current = draftRef.current
+        if (!current.cardId) return null
+        const payload = { ...current, toolAllowlist: current.toolsMode === 'allowlist' ? current.toolAllowlist : [] }
+        savingRef.current = true
+        try {
+          const result = await call('/preset', payload)
+          if (opts.silent !== true) {
+            notify(result.error ? `预设已保存，但注册到 DSH 时出错：${result.error}` : `已保存预设。到会话的预设选择器里选「吟游 · ${current.name || '…'}」即可开始扮演。`, result.error ? 'error' : 'info')
+          } else if (result.error) {
+            notify(`自动保存出错：${result.error}`, 'error')
+          }
+          if (!current.id && typeof result.presetId === 'string' && result.presetId.length > 0) {
+            setDraft((d) => (d.id ? d : { ...d, id: result.presetId }))
+          }
+          if (opts.reset === true) { setPreview(null); setDraft(emptyDraft()) }
+          await reload()
+          return result
+        } catch (error) {
+          notify(String((error && error.message) || error), 'error')
+          throw error
+        } finally { savingRef.current = false }
+      }, [emptyDraft, reload, notify])
+      saveDraftRef.current = saveDraft
+
+      const scheduleAutoSave = useCallback(() => {
+        if (!draftRef.current.cardId) return
+        if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
+        const fire = () => {
+          if (savingRef.current) { autoSaveTimer.current = setTimeout(fire, 300); return }
+          autoSaveTimer.current = null
+          const run = saveDraftRef.current
+          if (typeof run === 'function') run({ silent: true }).catch(() => {})
+        }
+        autoSaveTimer.current = setTimeout(fire, 700)
+      }, [])
+
+      useEffect(() => () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current) }, [])
+
       const save = async () => {
         if (!draft.cardId) { notify('请先选择一个角色卡', 'error'); return }
+        if (autoSaveTimer.current) { clearTimeout(autoSaveTimer.current); autoSaveTimer.current = null }
         setBusy(true)
-        try {
-          const result = await call('/preset', draft)
-          notify(result.error ? `预设已保存，但注册到 DSH 时出错：${result.error}` : `已保存预设。到会话的预设选择器里选「吟游 · ${draft.name || '…'}」即可开始扮演。`, result.error ? 'error' : 'info')
-          setPreview(null); setDraft(emptyDraft()); await reload()
-        } catch (error) { notify(String((error && error.message) || error), 'error') } finally { setBusy(false) }
+        try { await saveDraft({ reset: true }) } catch (error) { /* 错误提示已由 saveDraft 发出 */ } finally { setBusy(false) }
       }
       const runPreview = async () => {
         if (!draft.cardId) { notify('请先选择一个角色卡', 'error'); return }
         setPreviewBusy(true)
-        try { const result = await call('/preset/preview', draft); setPreview(result) }
+        try {
+          const payload = { ...draft, toolAllowlist: draft.toolsMode === 'allowlist' ? draft.toolAllowlist : [] }
+          const result = await call('/preset/preview', payload)
+          setPreview(result)
+        }
         catch (error) { notify(String((error && error.message) || error), 'error') } finally { setPreviewBusy(false) }
       }
       const remove = async (preset) => {
@@ -1284,52 +1629,83 @@ window.__ModuleLoader__.load({
       }
 
       const detail = draft.cardId ? cardDetails[draft.cardId] : null
-      const greetings = greetingsForDetail(detail)
+      const greetings = getGreetingsFromDetail(detail)
       const selectedGreeting = draft.greetingIndex !== null ? greetings[draft.greetingIndex] : undefined
 
       return h('div', { style: S.list }, [
-        h('div', { key: 'form', style: S.card }, [
+        h('div', { key: 'form', className: 'dsh-bard-card', style: { ...S.card, paddingBottom: '72px' } }, [
           h('div', { key: 'h', style: S.between }, [
             h('span', { key: 't', style: { ...S.name, fontSize: '16px' } }, draft.id ? '编辑预设' : '新建预设'),
             draft.id ? h(Btn, { key: 'c', onClick: () => { setPreview(null); setDraft(emptyDraft()) } }, '新建 / 取消编辑') : null,
           ]),
 
           h(Section, { key: 'sec-basic', title: '基础设定', defaultOpen: true }, [
-            h('div', { key: 'f1', style: { ...S.grid, marginBottom: '12px' } }, [
-              h(Field, { key: 'a', label: '预设名称' }, h('input', { style: S.input, value: draft.name, placeholder: '留空则使用角色名', onChange: (e) => set({ name: e.target.value }) })),
-              h(Field, { key: 'b', label: '角色卡' }, h('select', { style: S.select, value: draft.cardId, onChange: async (e) => {
-                const nextCardId = e.target.value; let dtl = null
-                try { if (nextCardId) dtl = await ensureCardDetail(nextCardId) } catch (error) { notify(String((error && error.message) || error), 'error') }
-                const nextGreetings = greetingsForDetail(dtl)
-                setDraft((d) => ({ ...d, cardId: nextCardId, greetingIndex: Number.isInteger(d.greetingIndex) && d.greetingIndex < nextGreetings.length ? d.greetingIndex : null }))
-              } }, [
-                h('option', { key: '', value: '' }, '— 请选择 —'),
-                ...state.cards.map((card) => h('option', { key: card.id, value: card.id }, card.name)),
-              ])),
+            // 分组 A：角色与人格
+            h('div', { key: 'grp-a', style: { marginBottom: '20px' } }, [
+              h('div', { key: 'l', style: { ...S.label, fontSize: '13px', marginBottom: '12px', color: 'var(--dsw-alias-label-primary)' } }, '角色与人格'),
+              h('div', { key: 'g', style: { ...S.grid, marginBottom: '12px' } }, [
+                h(Field, { key: 'a', label: '预设名称' }, h('input', { style: S.input, value: draft.name, placeholder: '留空则使用角色名', onChange: (e) => set({ name: e.target.value }) })),
+                h(Field, { key: 'b', label: '角色卡' }, h('select', { style: S.select, value: draft.cardId, onChange: async (e) => {
+                  const nextCardId = e.target.value; let dtl = null
+                  try { if (nextCardId) dtl = await ensureCardDetail(nextCardId) } catch (error) { notify(String((error && error.message) || error), 'error') }
+                  const nextGreetings = getGreetingsFromDetail(dtl)
+                  setDraft((d) => ({ ...d, cardId: nextCardId, greetingIndex: Number.isInteger(d.greetingIndex) && d.greetingIndex < nextGreetings.length ? d.greetingIndex : null }))
+                } }, [
+                  h('option', { key: '', value: '' }, '— 请选择 —'),
+                  ...state.cards.map((card) => h('option', { key: card.id, value: card.id }, card.name)),
+                ])),
+              ]),
+              h(Field, { key: 'persona', label: '绑定人格（阿尔兹海默）' }, [
+                h('div', { key: 'row', style: { ...S.row, alignItems: 'stretch' } }, [
+                  h('select', {
+                    style: { ...S.select, flex: '1 1 auto' },
+                    value: draft.personaId,
+                    onChange: (e) => set({ personaId: e.target.value })
+                  }, [
+                    h('option', { key: '', value: '' }, '— 不绑定（普通模式） —'),
+                    ...state.personas.map((p) => h('option', { key: p.id, value: p.id }, `${p.name}（第 ${p.generation} 世）`))
+                  ]),
+                  h(Btn, {
+                    onClick: async () => {
+                      try {
+                        const res = await call('/persona/create', { cardId: draft.cardId, name: draft.name });
+                        notify('人格已创建并绑定');
+                        set({ personaId: res.persona.id });
+                        await reload();
+                      } catch (e) { notify(String(e.message), 'error') }
+                    }
+                  }, '+ 新建人格')
+                ])
+              ]),
             ]),
-                        h(Field, { key: 'persona', label: '绑定人格（阿尔兹海默）' }, [
-              h('div', { key: 'row', style: { ...S.row, alignItems: 'stretch' } }, [
-                h('select', { 
-                  style: { ...S.select, flex: '1 1 auto' }, 
-                  value: draft.personaId, 
-                  onChange: (e) => set({ personaId: e.target.value }) 
-                }, [
-                  h('option', { key: '', value: '' }, '— 不绑定（普通模式） —'),
-                  ...state.personas.map((p) => h('option', { key: p.id, value: p.id }, `${p.name}（第 ${p.generation} 世）`))
-                ]),
-                h(Btn, { 
-                  onClick: async () => {
-                    try {
-                      const res = await call('/persona/create', { cardId: draft.cardId, name: draft.name });
-                      notify('人格已创建并绑定');
-                      set({ personaId: res.persona.id });
-                      await reload();
-                    } catch (e) { notify(String(e.message), 'error') }
-                  } 
-                }, '+ 新建人格')
-              ])
+
+            // 分组 B：玩家设定
+            h('div', { key: 'grp-b', style: { marginBottom: '20px', paddingTop: '16px', borderTop: '1px solid var(--dsw-alias-border-l1)' } }, [
+              h('div', { key: 'l', style: { ...S.label, fontSize: '13px', marginBottom: '12px', color: 'var(--dsw-alias-label-primary)' } }, '玩家设定'),
+              h('div', { key: 'g', style: { ...S.grid, marginBottom: '12px' } }, [
+                h(Field, { key: 'un', label: '你的名字（替换 {{user}}）' }, h('input', { style: S.input, value: draft.userName, placeholder: '留空则使用 User', onChange: (e) => set({ userName: e.target.value }) })),
+                h(Field, { key: 'ug', label: '玩家性别' }, h('select', { style: S.select, value: GENDERS.some((item) => item.value === draft.userGender) ? draft.userGender : (draft.userGender ? '__custom__' : ''), onChange: (e) => {
+                  const value = e.target.value
+                  if (value === '__custom__') { const custom = window.prompt('请输入性别', draft.userGender || ''); if (custom !== null) set({ userGender: custom.trim() }); return }
+                  set({ userGender: value })
+                } }, [
+                  ...GENDERS.map((item) => h('option', { key: item.value, value: item.value }, item.label)),
+                  draft.userGender && !GENDERS.some((item) => item.value === draft.userGender) ? h('option', { key: '__custom_current__', value: '__custom__' }, `自定义：${draft.userGender}`) : h('option', { key: '__custom__', value: '__custom__' }, '自定义…'),
+                ])),
+                h(Field, { key: 'ol', label: '输出语言' }, h('select', { style: S.select, value: LANGUAGES.some((lang) => lang.value === draft.outputLanguage) ? draft.outputLanguage : (draft.outputLanguage ? '__custom__' : ''), onChange: (e) => {
+                  const value = e.target.value
+                  if (value === '__custom__') { const custom = window.prompt('请输入语言名', draft.outputLanguage || ''); if (custom !== null) set({ outputLanguage: custom.trim() }); return }
+                  set({ outputLanguage: value })
+                } }, [
+                  ...LANGUAGES.map((lang) => h('option', { key: lang.value, value: lang.value }, lang.label)),
+                  draft.outputLanguage && !LANGUAGES.some((lang) => lang.value === draft.outputLanguage) ? h('option', { key: '__custom_current__', value: '__custom__' }, `自定义：${draft.outputLanguage}`) : h('option', { key: '__custom__', value: '__custom__' }, '自定义…'),
+                ])),
+              ]),
             ]),
-            h('div', { key: 'f2', style: { ...S.grid, marginBottom: '12px' } }, [
+
+            // 分组 C：对话设定
+            h('div', { key: 'grp-c', style: { paddingTop: '16px', borderTop: '1px solid var(--dsw-alias-border-l1)' } }, [
+              h('div', { key: 'l', style: { ...S.label, fontSize: '13px', marginBottom: '12px', color: 'var(--dsw-alias-label-primary)' } }, '对话设定'),
               h(Field, { key: 'greet', label: '开场白注入（可选）' }, [
                 h('select', { key: 'sel', style: S.select, value: draft.greetingIndex === null ? '' : String(draft.greetingIndex), disabled: greetings.length === 0, onChange: (e) => set({ greetingIndex: e.target.value === '' ? null : Number(e.target.value) }) }, [
                   h('option', { key: '', value: '' }, greetings.length === 0 ? '（这张角色卡没有开场白）' : '不注入'),
@@ -1337,25 +1713,7 @@ window.__ModuleLoader__.load({
                 ]),
                 selectedGreeting ? h('details', { key: 'preview', style: { marginTop: '6px' } }, [h('summary', { key: 's', style: { cursor: 'pointer', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' } }, `预览：${selectedGreeting.label}`), h('div', { key: 'p', style: { ...S.quote, marginTop: '8px' } }, selectedGreeting.text)]) : null,
               ]),
-              h(Field, { key: 'un', label: '你的名字（替换 {{user}}）' }, h('input', { style: S.input, value: draft.userName, placeholder: '留空则使用 User', onChange: (e) => set({ userName: e.target.value }) })),
-              h(Field, { key: 'ug', label: '玩家性别' }, h('select', { style: S.select, value: GENDERS.some((item) => item.value === draft.userGender) ? draft.userGender : (draft.userGender ? '__custom__' : ''), onChange: (e) => {
-                const value = e.target.value
-                if (value === '__custom__') { const custom = window.prompt('请输入性别', draft.userGender || ''); if (custom !== null) set({ userGender: custom.trim() }); return }
-                set({ userGender: value })
-              } }, [
-                ...GENDERS.map((item) => h('option', { key: item.value, value: item.value }, item.label)),
-                draft.userGender && !GENDERS.some((item) => item.value === draft.userGender) ? h('option', { key: '__custom_current__', value: '__custom__' }, `自定义：${draft.userGender}`) : h('option', { key: '__custom__', value: '__custom__' }, '自定义…'),
-              ])),
-              h(Field, { key: 'ol', label: '输出语言' }, h('select', { style: S.select, value: LANGUAGES.some((lang) => lang.value === draft.outputLanguage) ? draft.outputLanguage : (draft.outputLanguage ? '__custom__' : ''), onChange: (e) => {
-                const value = e.target.value
-                if (value === '__custom__') { const custom = window.prompt('请输入语言名', draft.outputLanguage || ''); if (custom !== null) set({ outputLanguage: custom.trim() }); return }
-                set({ outputLanguage: value })
-              } }, [
-                ...LANGUAGES.map((lang) => h('option', { key: lang.value, value: lang.value }, lang.label)),
-                draft.outputLanguage && !LANGUAGES.some((lang) => lang.value === draft.outputLanguage) ? h('option', { key: '__custom_current__', value: '__custom__' }, `自定义：${draft.outputLanguage}`) : h('option', { key: '__custom__', value: '__custom__' }, '自定义…'),
-              ])),
             ]),
-            
             h('div', { key: 'wb', style: { marginTop: '16px' } }, [
               h('div', { key: 'l', style: { ...S.label, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, [h('span', null, `世界书（${draft.worldbookIds.length} 已选）`), h(Btn, { key: 't', onClick: () => setWbExpanded(!wbExpanded) }, wbExpanded ? '收起列表' : '选择…')]),
               draft.worldbookIds.length > 0 ? h('div', { key: 's', style: { ...S.muted, marginBottom: '8px' } }, draft.worldbookIds.map((id) => (state.worldbooks.find((b) => b.id === id) || {}).name || id).join('、')) : null,
@@ -1370,19 +1728,39 @@ window.__ModuleLoader__.load({
           ]),
 
           h(Section, { key: 'sec-blocks', title: '提示词编排', defaultOpen: false }, [
-            h(BlockEditor, { key: 'blocks', draft, setDraft, availableBlocks: preview ? preview.blocks : [], blockDefs }),
+            h(BlockEditor, { key: 'blocks', draft, setDraft, availableBlocks: preview ? preview.blocks : [], blockDefs, onReorder: scheduleAutoSave }),
           ]),
 
           h(Section, { key: 'sec-adv', title: '高级设置与风格', defaultOpen: false }, [
             h('div', { key: 'tools', style: { marginBottom: '16px' } }, [
-              h('label', { key: 'c', style: S.check }, [h('input', { type: 'checkbox', checked: draft.enableTools !== false, onChange: (e) => set(e.target.checked ? { enableTools: true, toolAllowlist: DEFAULT_TOOL_ALLOWLIST.slice() } : { enableTools: false }) }), h('span', { key: 't', style: { fontWeight: 600 } }, '引导角色使用工具')]),
-              draft.enableTools !== false ? h('div', { key: 'opts', style: { paddingLeft: '24px', marginTop: '8px' } }, [
+              h('div', { key: 'mode', style: { marginBottom: '8px' } }, [
+                h('span', { key: 'l', style: S.label }, '工具模式'),
+                h('div', { key: 'r', style: S.row }, [
+                  h('label', { key: 'all', style: S.check }, [h('input', { type: 'radio', name: 'toolsMode', checked: draft.toolsMode === 'all', onChange: () => setDraft((d) => ({ ...d, toolsMode: 'all', blocks: { ...d.blocks, agency: { ...(d.blocks.agency || {}), enabled: true } } })) }), h('span', null, '允许全部')]),
+                  h('label', { key: 'wl', style: S.check }, [h('input', { type: 'radio', name: 'toolsMode', checked: draft.toolsMode === 'allowlist', onChange: () => setDraft((d) => ({ ...d, toolsMode: 'allowlist', blocks: { ...d.blocks, agency: { ...(d.blocks.agency || {}), enabled: true } } })) }), h('span', null, '只允许白名单')]),
+                  h('label', { key: 'none', style: S.check }, [h('input', { type: 'radio', name: 'toolsMode', checked: draft.toolsMode === 'none', onChange: () => set({ toolsMode: 'none' }) }), h('span', null, '全部禁用')]),
+                ]),
+              ]),
+              draft.toolsMode !== 'none' ? h('div', { key: 'opts', style: { paddingLeft: '24px', marginTop: '8px' } }, [
                 h('label', { key: 'ws', style: S.check }, [h('input', { type: 'checkbox', checked: draft.workspaceEnabled !== false, onChange: (e) => set({ workspaceEnabled: e.target.checked }) }), h('span', null, '为每个对话建立专属工作区')]),
                 draft.workspaceEnabled !== false ? h('div', { key: 'wsp', style: { marginTop: '8px' } }, [h('span', { key: 'l', style: S.label }, '工作区前缀'), h('input', { key: 'i', style: { ...S.input, maxWidth: '280px' }, value: draft.workspacePrefix, placeholder: 'Bard_World', onChange: (e) => set({ workspacePrefix: e.target.value }) })]) : null,
-                h('details', { key: 'tools-allow', style: { marginTop: '12px' } }, [
+                draft.toolsMode === 'allowlist' ? h('details', { key: 'tools-allow', style: { marginTop: '12px' }, open: true }, [
                   h('summary', { key: 's', style: { cursor: 'pointer', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' } }, `工具白名单（${draft.toolAllowlist.length} / ${availableTools.length} 已选）`),
-                  availableTools.length === 0 ? h('div', { key: 'e', style: { ...S.muted, marginTop: '6px' } }, '尚未采集到工具清单。') : h('div', { key: 'g', style: { ...S.grid, marginTop: '8px' } }, availableTools.map((name) => h('label', { key: name, style: S.check }, [h('input', { type: 'checkbox', checked: draft.toolAllowlist.includes(name), onChange: () => toggle('toolAllowlist', name) }), h('span', null, name)]))),
-                ]),
+                  availableTools.length === 0 ? h('div', { key: 'e', style: { ...S.muted, marginTop: '6px' } }, '尚未采集到工具清单。') : h('div', { key: 'body' }, [
+                    h('div', { key: 'bulk', style: { ...S.row, marginTop: '8px', marginBottom: '8px', gap: '6px' } }, [
+                      h(Btn, { key: 'all', onClick: () => { setDraft((d) => ({ ...d, toolAllowlist: availableTools.slice() })); scheduleAutoSave() } }, `全选（${availableTools.length}）`),
+                      h(Btn, { key: 'none', onClick: () => { setDraft((d) => ({ ...d, toolAllowlist: [] })); scheduleAutoSave() } }, '全不选'),
+                      h(Btn, { key: 'inv', onClick: () => {
+                        setDraft((d) => {
+                          const picked = new Set(Array.isArray(d.toolAllowlist) ? d.toolAllowlist : [])
+                          return { ...d, toolAllowlist: availableTools.filter((name) => !picked.has(name)) }
+                        })
+                        scheduleAutoSave()
+                      } }, '反选'),
+                    ]),
+                    h('div', { key: 'g', style: { ...S.grid, marginTop: '4px' } }, availableTools.map((name) => h('label', { key: name, style: S.check }, [h('input', { type: 'checkbox', checked: draft.toolAllowlist.includes(name), onChange: () => toggle('toolAllowlist', name) }), h('span', null, name)]))),
+                  ]),
+                ]) : null,
               ]) : null,
             ]),
 
@@ -1420,7 +1798,7 @@ window.__ModuleLoader__.load({
           ]),
         ]),
 
-        preview ? h('div', { key: 'preview', style: S.card }, [
+        preview ? h('div', { key: 'preview', className: 'dsh-bard-card', style: S.card }, [
           h('div', { key: 'h', style: S.between }, [
             h('span', { key: 't', style: { ...S.name, fontSize: '15px' } }, '提示词块预览'),
             h('span', { key: 'c', style: S.muted }, `${preview.chars} 字符 · 约 ${preview.tokenEstimate} token · 卡语言：${preview.cardLanguage}`),
@@ -1443,26 +1821,72 @@ window.__ModuleLoader__.load({
           ]),
         ]) : null,
 
-        state.presets.length === 0 ? h('div', { key: 'empty', style: S.muted }, '还没有预设。')
-          : h('div', { key: 'list', style: { marginTop: '16px' } }, [
-            h('div', { key: 'l', style: { ...S.label, fontSize: '14px', marginBottom: '12px' } }, '已保存的预设'),
-            ...state.presets.map((preset) => h('div', { key: preset.id, style: { ...S.item, marginBottom: '8px' } }, [
-              h('div', { key: 'm', style: S.grow }, [
-                h('div', { key: 'n', style: { ...S.name, fontSize: '14px' } }, preset.name),
-                h('div', { key: 's', style: { ...S.muted, marginTop: '4px' } }, [`角色 ${preset.cardName}`, `${preset.worldbookIds.length} 本世界书`, `${preset.skillNames.length} 个技能`, preset.options.complete ? '完全接管系统提示' : '', Number.isInteger(preset.options.greetingIndex) && preset.options.greetingIndex >= 0 ? `开场白 #${preset.options.greetingIndex + 1}` : '', preset.options.enableTools === false ? '禁用工具调用' : '', preset.options.enableTools !== false && Array.isArray(preset.options.toolAllowlist) && preset.options.toolAllowlist.length > 0 ? `工具白名单 ${preset.options.toolAllowlist.length} 项` : '', preset.options.userName ? `称呼 ${preset.options.userName}` : '', preset.options.userGender ? `性别 ${preset.options.userGender}` : ''].filter(Boolean).join(' · ')),
-                h('div', { key: 'id', style: { ...S.muted, fontFamily: 'monospace', marginTop: '4px' } }, `DSH 预设 ID：${preset.dshPresetId}`),
-                preset.error ? h('div', { key: 'e', style: { ...S.muted, color: 'var(--dsw-alias-state-error-primary)', marginTop: '4px' } }, `注册错误：${preset.error}`) : null,
-                h('div', { key: 'b', style: { ...S.row, marginTop: '10px' } }, [
-                  h(Btn, { key: 'e', onClick: () => { edit(preset).catch(() => {}) } }, '编辑'),
-                  h(Btn, { key: 'g', onClick: () => { toggleGreetFor(preset).catch(() => {}) } }, greetFor === preset.id ? '收起开场白' : '输出开场白'),
-                  h(Btn, { key: 'x', variant: 'danger', disabled: busy, onClick: () => remove(preset) }, '删除'),
+        state.presets.length === 0 
+          ? h('div', { key: 'empty', style: { textAlign: 'center', padding: '48px 24px', background: 'var(--dsw-alias-bg-layer-1)', borderRadius: '12px', border: '1px dashed var(--dsw-alias-border-l2)' } }, [
+              h('div', { key: 'icon', style: { fontSize: '32px', opacity: 0.3, marginBottom: '12px' } }, '🪶'),
+              h('div', { key: 't', style: { fontSize: '15px', fontWeight: 500, color: 'var(--dsw-alias-label-primary)' } }, '还没有预设'),
+              h('div', { key: 's', style: { ...S.muted, marginTop: '6px' } }, '在上方配置好角色卡和设定后，保存为你的第一个 DSH 预设。')
+            ])
+          : h('div', { key: 'list', style: { display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '24px' } }, [
+            h('div', { key: 'l', style: { fontSize: '13px', fontWeight: 600, color: 'var(--dsw-alias-label-secondary)', letterSpacing: '0.5px', marginBottom: '4px' } }, `已保存的预设 (${state.presets.length})`),
+            ...state.presets.map((preset) => {
+              const mode = readToolsMode(preset.options)
+              const toolsSummary = mode === 'none' ? '禁用工具' : mode === 'allowlist' ? `白名单 ${Array.isArray(preset.options.toolAllowlist) ? preset.options.toolAllowlist.length : 0} 项` : ''
+              const card = state.cards.find(c => c.id === preset.cardId)
+              const portrait = card && card.portrait ? card.portrait : null
+              
+              return h('div', { 
+                key: preset.id, 
+                className: 'dsh-bard-card',
+                style: { 
+                  background: 'var(--dsw-alias-bg-layer-1)', 
+                  border: '1px solid var(--dsw-alias-border-l1)', 
+                  borderRadius: '12px', 
+                  padding: '16px', 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  gap: '12px',
+                  transition: 'all 0.2s', 
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)' 
+                } 
+              }, [
+                // 第一行：主体信息
+                h('div', { key: 'main', style: { display: 'flex', gap: '16px', alignItems: 'center', width: '100%' } }, [
+                  h('div', { key: 'img', style: { flex: '0 0 auto' } }, [
+                    portrait 
+                      ? h('img', { src: portrait, style: { width: '42px', height: '42px', borderRadius: '10px', objectFit: 'cover', background: 'var(--dsw-alias-bg-layer-2)' } })
+                      : h('div', { style: { width: '42px', height: '42px', borderRadius: '10px', background: 'var(--dsw-alias-bg-layer-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--dsw-alias-label-secondary)', fontSize: '18px', fontWeight: 600 } }, (preset.cardName || '?')[0]),
+                  ]),
+                  
+                  h('div', { key: 'info', style: { flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' } }, [
+                    h('div', { key: 'name-line', style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } }, [
+                      h('span', { style: { fontSize: '15px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } }, preset.name),
+                      preset.error ? h('span', { key: 'err', style: { fontSize: '11px', background: 'rgba(220,38,38,0.1)', color: 'var(--dsw-alias-state-error-primary)', padding: '2px 6px', borderRadius: '4px', fontWeight: 500 } }, '注册失败') : null,
+                      preset.options.complete ? h('span', { key: 'comp', style: { fontSize: '11px', border: '1px solid var(--dsw-alias-border-l2)', color: 'var(--dsw-alias-label-secondary)', padding: '1px 6px', borderRadius: '4px' } }, '接管提示') : null,
+                    ]),
+                    h('div', { key: 'meta', style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' } }, [
+                      h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '4px' } }, `角色：${preset.cardName}`),
+                      preset.worldbookIds.length > 0 ? h('span', { key: 'wb', style: { display: 'inline-flex', alignItems: 'center', gap: '4px' } }, `· ${preset.worldbookIds.length} 世界书`) : null,
+                      preset.skillNames.length > 0 ? h('span', { key: 'sk', style: { display: 'inline-flex', alignItems: 'center', gap: '4px' } }, `· ${preset.skillNames.length} 技能`) : null,
+                      toolsSummary ? h('span', { key: 'tl', style: { display: 'inline-flex', alignItems: 'center', gap: '4px' } }, `· 工具：${toolsSummary}`) : null,
+                      preset.options.userName ? h('span', { key: 'un', style: { display: 'inline-flex', alignItems: 'center', gap: '4px' } }, `· 称呼：${preset.options.userName}`) : null,
+                    ])
+                  ]),
+                  
+                  h('div', { key: 'acts', style: { flex: '0 0 auto', display: 'flex', gap: '4px' } }, [
+                    h('button', { key: 'e', className: 'dsh-bard-btn', style: { padding: '4px 10px', fontSize: '12px', background: 'transparent', border: '1px solid transparent', color: 'var(--dsw-alias-label-secondary)' }, onMouseEnter: (e) => e.target.style.color = 'var(--dsw-alias-brand-primary)', onMouseLeave: (e) => e.target.style.color = 'var(--dsw-alias-label-secondary)', onClick: () => { edit(preset).catch(() => {}) } }, '编辑'),
+                    h('button', { key: 'g', className: 'dsh-bard-btn', style: { padding: '4px 10px', fontSize: '12px', background: 'transparent', border: '1px solid transparent', color: 'var(--dsw-alias-label-secondary)' }, onMouseEnter: (e) => e.target.style.color = 'var(--dsw-alias-brand-primary)', onMouseLeave: (e) => e.target.style.color = 'var(--dsw-alias-label-secondary)', onClick: () => { toggleGreetFor(preset).catch(() => {}) } }, greetFor === preset.id ? '收起' : '开场白'),
+                    h('button', { key: 'x', className: 'dsh-bard-btn', style: { padding: '4px 10px', fontSize: '12px', background: 'transparent', border: '1px solid transparent', color: 'var(--dsw-alias-label-secondary)' }, onMouseEnter: (e) => e.target.style.color = 'var(--dsw-alias-state-error-primary)', onMouseLeave: (e) => e.target.style.color = 'var(--dsw-alias-label-secondary)', onClick: () => remove(preset) }, '删除'),
+                  ]),
                 ]),
-                greetFor === preset.id ? h('div', { key: 'gb', style: { marginTop: '12px' } }, h(GreetingBlock, { greetings: greetingsForDetail(cardDetails[preset.cardId]) })) : null,
-              ]),
-            ])),
+                
+                // 展开的开场白预览
+                greetFor === preset.id ? h('div', { key: 'gb', style: { background: 'var(--dsw-alias-bg-base)', padding: '12px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l1)' } }, h(GreetingBlock, { greetings: getGreetingsFromDetail(cardDetails[preset.cardId]) })) : null,
+              ])
+            }),
           ]),
 
-        h('div', { key: 'cmd', style: { ...S.card, marginTop: '16px' } }, [
+        h('div', { key: 'cmd', className: 'dsh-bard-card', style: { ...S.card, marginTop: '16px' } }, [
           h('div', { key: 't', style: { ...S.name, fontSize: '14px' } }, '聊天里的快捷命令'),
           h('pre', { key: 'p', style: S.pre }, ['/bard           列出所有 Bard 预设', '/bard card      显示当前会话扮演的角色', '/bard greet     输出当前会话角色卡的开场白', '/bard greet 2   输出第 2 条开场白（备用开场白 1）'].join('\n')),
         ]),
@@ -1475,8 +1899,59 @@ window.__ModuleLoader__.load({
 
     const TABS = [{ id: 'cards', label: '角色卡' }, { id: 'worldbooks', label: '世界书' }, { id: 'skills', label: '技能' }, { id: 'presets', label: '预设' }, { id: 'creator', label: '女娲' }]
 
+    function MoonIcon(props) {
+      const isBard = props.view === 'bard'
+      return h('div', { 
+        className: 'dsh-bard-moon-icon', 
+        style: { 
+          display: 'flex', alignItems: 'center', justifyContent: 'center', 
+          width: '32px', height: '32px', 
+          transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' 
+        } 
+      }, [
+        h('svg', { width: 28, height: 28, viewBox: '0 0 24 24', style: { display: 'block' } }, [
+          h('defs', { key: 'defs' }, [
+            h('radialGradient', { id: 'moon-grad-full', cx: '40%', cy: '40%', r: '60%' }, [
+              h('stop', { offset: '0%', stopColor: '#fef08a' }),
+              h('stop', { offset: '100%', stopColor: '#ca8a04' })
+            ]),
+            h('radialGradient', { id: 'moon-grad-crescent', cx: '30%', cy: '30%', r: '70%' }, [
+              h('stop', { offset: '0%', stopColor: '#e4e4e7' }),
+              h('stop', { offset: '100%', stopColor: '#71717a' })
+            ]),
+            h('filter', { id: 'moon-glow' }, [
+              h('feGaussianBlur', { stdDeviation: '1.5', result: 'blur' }),
+              h('feComposite', { in: 'SourceGraphic', in2: 'blur', operator: 'over' })
+            ])
+          ]),
+          isBard
+            ? h('g', { key: 'full' }, [
+                // 光晕
+                h('circle', { cx: 12, cy: 12, r: 10, fill: '#fbbf24', opacity: '0.15', filter: 'url(#moon-glow)' }),
+                // 月亮本体
+                h('circle', { cx: 12, cy: 12, r: 8, fill: 'url(#moon-grad-full)' }),
+                // 环形山细节
+                h('circle', { cx: 9, cy: 9, r: 1.5, fill: '#a16207', opacity: '0.2' }),
+                h('circle', { cx: 14, cy: 10, r: 2.5, fill: '#a16207', opacity: '0.15' }),
+                h('circle', { cx: 10, cy: 14, r: 1.8, fill: '#a16207', opacity: '0.2' }),
+                h('circle', { cx: 14.5, cy: 14.5, r: 1.2, fill: '#a16207', opacity: '0.25' }),
+              ])
+            : h('g', { key: 'crescent' }, [
+                // 光晕
+                h('path', { d: 'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z', fill: '#e4e4e7', opacity: '0.1', filter: 'url(#moon-glow)' }),
+                // 弦月本体
+                h('path', { d: 'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z', fill: 'url(#moon-grad-crescent)' }),
+                // 少许星星点缀
+                h('circle', { cx: 16, cy: 6, r: 0.8, fill: '#fff', opacity: '0.6' }),
+                h('circle', { cx: 19, cy: 9, r: 0.5, fill: '#fff', opacity: '0.4' }),
+              ])
+        ])
+      ])
+    }
+
     function BardSettings() {
       const [state, setState] = useState(null)
+      const [view, setView] = useState('bard')
       const [tab, setTab] = useState('presets')
       const [notice, setNotice] = useState(null)
       const [failure, setFailure] = useState('')
@@ -1523,39 +1998,85 @@ window.__ModuleLoader__.load({
       }, [])
 
       if (failure) {
-        return h('div', { className: 'dsh-bard-scope', style: S.page }, [h('div', { key: 't', style: S.name }, '吟游'), h('div', { key: 'e', style: S.alert }, `读取吟游数据失败：${failure}`), h(Btn, { key: 'r', onClick: () => load() }, '重试')])
+        return h('div', { className: `dsh-bard-scope ${view === 'alzheimer' ? 'dsh-bard-dark' : ''}`, style: S.page }, [
+          h('div', { key: 't', style: S.name }, '吟游'),
+          h('div', { key: 'e', style: S.alert }, `读取吟游数据失败：${failure}`),
+          h(Btn, { key: 'r', onClick: () => load() }, '重试')
+        ])
       }
       if (!state) return h('div', { className: 'dsh-bard-scope', style: S.page }, [h('div', { key: 'l', style: S.muted }, '正在读取吟游数据…')])
 
       const common = { state, reload, notify, cardDetails, ensureCardDetail, invalidateCardDetail }
 
-      return h('div', { className: 'dsh-bard-scope', style: S.page }, [
-        h('div', { key: 'head', style: { ...S.between, marginBottom: '8px' } }, [
-          h('div', { key: 'l' }, [
-            h('div', { key: 't', style: { ...S.name, fontSize: '20px' } }, '吟游'),
-            h('div', { key: 's', style: { ...S.muted, marginTop: '4px' } }, '导入角色卡与世界书，挂上技能，保存成 DSH 预设后即可开始角色扮演。'),
+      return h('div', { className: `dsh-bard-scope ${view === 'alzheimer' ? 'dsh-bard-dark' : ''}`, style: { ...S.page, position: 'relative' } }, [
+        // 柔蒙版层：暗面视图下缓缓浮现
+        h('div', {
+          key: 'soft-mask',
+          style: {
+            position: 'absolute',
+            top: '-20px', left: '-20px', right: '-20px', bottom: '-240px',
+            pointerEvents: 'none',
+            zIndex: 0,
+            background: 'radial-gradient(ellipse at 15% 8%, rgba(10,10,12,0) 0%, rgba(10,10,12,0.88) 55%, rgba(10,10,12,0.94) 100%)',
+            opacity: view === 'alzheimer' ? 1 : 0,
+            transition: 'opacity 0.8s ease-in-out',
+            borderRadius: 'inherit'
+          }
+        }),
+
+        // 内容层：盖在蒙版之上
+        h('div', { key: 'content', style: { position: 'relative', zIndex: 1 } }, [
+          // 顶部 Header
+          h('div', { key: 'head', style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '16px' } }, [
+            h('div', { key: 'l', className: 'dsh-bard-clickable-title', style: { cursor: 'pointer', userSelect: 'none' }, onClick: () => setView(v => v === 'bard' ? 'alzheimer' : 'bard'), title: view === 'bard' ? '切换到阿尔兹海默' : '回到吟游' }, [
+              h('div', { key: 't', style: { ...S.name, fontSize: '24px', display: 'flex', alignItems: 'center', gap: '10px', letterSpacing: '1px' } }, [
+                view === 'bard' ? '吟游' : '阿尔兹海默',
+                h(MoonIcon, { view, key: 'moon' })
+              ]),
+              h('div', { key: 's', style: { ...S.muted, marginTop: '6px', fontSize: '13px' } }, view === 'bard' ? '导入角色卡与世界书，挂上技能，保存成 DSH 预设后即可开始角色扮演。' : '她的一生。记忆会散，但叙事还在。'),
+            ]),
+            h('div', { key: 'r', style: { display: 'flex', alignItems: 'center', gap: '8px' } }, [
+              view === 'bard' 
+                ? h('div', { style: { display: 'flex', gap: '8px' } }, [
+                    h('span', { key: 'cards', style: { fontSize: '12px', background: 'var(--dsw-alias-bg-layer-2)', padding: '4px 10px', borderRadius: '20px', color: 'var(--dsw-alias-label-secondary)' } }, `${counts.cards} 角色卡`),
+                    h('span', { key: 'books', style: { fontSize: '12px', background: 'var(--dsw-alias-bg-layer-2)', padding: '4px 10px', borderRadius: '20px', color: 'var(--dsw-alias-label-secondary)' } }, `${counts.worldbooks} 世界书`),
+                    h('span', { key: 'skills', style: { fontSize: '12px', background: 'var(--dsw-alias-bg-layer-2)', padding: '4px 10px', borderRadius: '20px', color: 'var(--dsw-alias-label-secondary)' } }, `${counts.skills} 技能`),
+                    h('span', { key: 'presets', style: { fontSize: '12px', background: 'var(--dsw-alias-brand-primary)', color: '#fff', padding: '4px 10px', borderRadius: '20px', fontWeight: 600 } }, `${counts.presets} 预设`),
+                  ])
+                : h('div', { key: 'c', style: S.row }, [
+                    state.debugMode ? h(Btn, { key: 'dbg', onClick: () => window.open('http://127.0.0.1:3758', '_blank') }, '⏱️ 时间加速') : null,
+                    h('span', { key: 'c', style: { fontSize: '12px', background: 'var(--dsw-alias-bg-layer-2)', padding: '4px 10px', borderRadius: '20px', color: 'var(--dsw-alias-label-secondary)' } }, `${state.personas?.length || 0} 个人格`)
+                  ])
+            ]),
           ]),
-          h('div', { key: 'r', style: S.row }, [h('span', { key: 'c', style: S.muted }, `${counts.cards} 角色卡 · ${counts.worldbooks} 世界书 · ${counts.skills} 技能 · ${counts.presets} 预设`)]),
+
+          notice ? h('div', { key: 'n', style: { ...(notice.kind === 'error' ? S.alert : S.ok), display: 'flex', alignItems: 'flex-start', gap: '12px' } }, [
+            h('span', { key: 't', style: { flex: '1 1 auto', minWidth: 0 } }, notice.text),
+            h('button', { key: 'x', type: 'button', 'aria-label': '关闭提示', onClick: () => setNotice(null), style: { flex: '0 0 auto', display: 'flex', border: 'none', background: 'transparent', cursor: 'pointer', color: 'inherit', padding: '2px', marginTop: '2px', opacity: 0.7 } }, h(Icon, { name: 'close', size: 11 })),
+          ]) : null,
+
+          state.errors && state.errors.length > 0 ? h('div', { key: 'se', style: S.alert }, state.errors.map((line, at) => h('div', { key: at }, line))) : null,
+
+          view === 'bard' ? [
+            h('div', { key: 'tabs', className: 'dsh-bard-tabs-wrap', role: 'tablist' }, TABS.map((item) => h('button', {
+              key: item.id, type: 'button', role: 'tab', 'aria-selected': tab === item.id ? 'true' : 'false',
+              className: `dsh-bard-tab${tab === item.id ? ' dsh-bard-tab-active' : ''}`,
+              onClick: () => setTab(item.id),
+            }, item.label))),
+
+            tab === 'cards' ? h(CardsTab, { key: 'c', ...common, onExtractBook: (book) => { setCreatorBook(book ? { ...book, __ts: Date.now() } : null); setTab('creator') } })
+              : tab === 'worldbooks' ? h(BooksTab, { key: 'w', ...common })
+                : tab === 'skills' ? h(SkillsTab, { key: 'k', ...common })
+                  : tab === 'presets' ? h(PresetsTab, { key: 'p', ...common })
+                    : h(CreatorTab, { key: 'crt', ...common, initialBook: creatorBook }),
+          ] : h(AlzheimerContent, {
+            key: 'alzheimer',
+            onNavigateToPresets: () => {
+              setView('bard');
+              setTab('presets');
+            }
+          }),
         ]),
-
-        notice ? h('div', { key: 'n', style: { ...(notice.kind === 'error' ? S.alert : S.ok), display: 'flex', alignItems: 'flex-start', gap: '12px' } }, [
-          h('span', { key: 't', style: { flex: '1 1 auto', minWidth: 0 } }, notice.text),
-          h('button', { key: 'x', type: 'button', 'aria-label': '关闭提示', onClick: () => setNotice(null), style: { flex: '0 0 auto', display: 'flex', border: 'none', background: 'transparent', cursor: 'pointer', color: 'inherit', padding: '2px', marginTop: '2px', opacity: 0.7 } }, h(Icon, { name: 'close', size: 11 })),
-        ]) : null,
-
-        state.errors && state.errors.length > 0 ? h('div', { key: 'se', style: S.alert }, state.errors.map((line, at) => h('div', { key: at }, line))) : null,
-
-        h('div', { key: 'tabs', style: S.tabs, role: 'tablist' }, TABS.map((item) => h('button', {
-          key: item.id, type: 'button', role: 'tab', 'aria-selected': tab === item.id ? 'true' : 'false',
-          className: `dsh-bard-tab${tab === item.id ? ' dsh-bard-tab-active' : ''}`,
-          onClick: () => setTab(item.id),
-        }, item.label))),
-
-        tab === 'cards' ? h(CardsTab, { key: 'c', ...common, onExtractBook: (book) => { setCreatorBook(book); setTab('creator') } })
-          : tab === 'worldbooks' ? h(BooksTab, { key: 'w', ...common })
-            : tab === 'skills' ? h(SkillsTab, { key: 'k', ...common })
-              : tab === 'presets' ? h(PresetsTab, { key: 'p', ...common })
-                : h(CreatorTab, { key: 'crt', ...common, initialBook: creatorBook }),
       ])
     }
 
@@ -1567,10 +2088,6 @@ window.__ModuleLoader__.load({
         ctx.slots.inject('settings.section', () => ctx.slots.register(
           { name: 'settings.section', id: 'bard', order: 25, label: '吟游' },
           BardSettings,
-        ))
-        ctx.slots.inject('settings.section', () => ctx.slots.register(
-          { name: 'settings.section', id: 'bard-memory', order: 26, label: '阿尔兹海默' },
-          AlzheimerSettings,
         ))
       },
     }
