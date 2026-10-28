@@ -1,8 +1,16 @@
 {
   "name": "dsh-bard",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Bard-style role-play for DeepSeek Harness: import SillyTavern character cards (JSON/PNG) and world books (lorebooks), pick Harness skills, save the combination as a native DSH agent preset, and emit the card opening text.",
-  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "bard", "roleplay", "character-card", "lorebook"],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "bard",
+    "roleplay",
+    "character-card",
+    "lorebook"
+  ],
   "type": "module",
   "main": "lib/index.js",
   "exports": {
